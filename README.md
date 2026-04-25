@@ -28,7 +28,11 @@ This project bridges the two: **can SIGReg training extend cleanly from images t
   - [x] PyTorch Lightning training module
   - [x] Hydra config system
   - [x] pytest suite (11 tests, including subprocess integration test)
-- [ ] **Phase 1 — Tubelet embedding + masking** (architecture upgrade, still synthetic data)
+- [x] **Phase 1 — Tubelet embedding + masking** ✅
+  - [x] 3D Conv tubelet embedding (replaces frame-as-batch patchification)
+  - [x] Random tube masking (shared per-step, V-JEPA style)
+  - [x] Masked-encoding code path with token_indices
+  - [x] Phase 0 + Phase 1 smoke configs both passing
 - [ ] **Phase 2 — UCF101 data pipeline**
 - [ ] **Phase 3 — Linear probe evaluation**
 - [ ] **Phase 4 — UCF101 pretraining run** (first time λ > 0)
