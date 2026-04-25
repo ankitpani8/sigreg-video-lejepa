@@ -51,7 +51,11 @@ target-version = "py311"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "N", "W", "UP"]
-ignore = ["E501"]
+ignore = [
+    "E501",
+    "N806",  # uppercase tensor-dimension variables (B, N, D, T, H, W, S, A) are standard in PyTorch
+    "N812",  # `import lightning as L` and `import torch.nn.functional as F` are universal aliases
+]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

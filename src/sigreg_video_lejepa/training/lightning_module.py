@@ -2,9 +2,9 @@ from __future__ import annotations
 
 from typing import Any
 
+import lightning as L
 import torch
 import torch.nn as nn
-import lightning as L
 
 from sigreg_video_lejepa.training.sigreg_loss import SIGRegLoss, sigreg_video_loss
 

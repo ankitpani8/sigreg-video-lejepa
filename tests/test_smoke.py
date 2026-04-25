@@ -141,3 +141,23 @@ def test_synthetic_dataset_label_roundrobin() -> None:
     ds = SyntheticVideoDataset(num_clips=10, num_classes=5)
     labels = [ds[i][1] for i in range(10)]
     assert labels == [0, 1, 2, 3, 4, 0, 1, 2, 3, 4]
+
+
+def test_smoke_end_to_end() -> None:
+    """Integration test: verifies the full Hydra + Lightning wiring works end-to-end.
+
+    Unit tests can all pass while Hydra instantiation or config composition is broken.
+    This test catches that class of failure.
+    """
+    import os
+    result = subprocess.run(
+        [sys.executable, "scripts/pretrain.py", "+experiment=smoke_test"],
+        capture_output=True,
+        text=True,
+        cwd=os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+    )
+    assert result.returncode == 0, (
+        f"pretrain.py exited with code {result.returncode}\n"
+        f"stdout:\n{result.stdout}\n"
+        f"stderr:\n{result.stderr}"
+    )
