@@ -107,3 +107,8 @@ docs/            # Extended notes, design decisions
 - [ ] SIGReg lambda schedule: constant or warmup?
 - [ ] Frame sampling rate for UCF101: 8, 16, or 32 frames per clip?
 
+## Deferred Ablations
+
+- **Per-sample masks vs shared-per-step masks.** Phase 1 uses shared. Per-sample may help; defer test to post-v1.0.
+
+

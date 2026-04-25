@@ -1,0 +1,9 @@
+# @package _global_
+defaults:
+  - override /model: smoke_test_phase1
+
+trainer:
+  max_steps: 2
+  accelerator: cpu
+  enable_progress_bar: false
+  logger: false

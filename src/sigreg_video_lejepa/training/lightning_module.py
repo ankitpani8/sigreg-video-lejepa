@@ -16,7 +16,9 @@ class VideoJEPAModule(L.LightningModule):
       - predictor head → L_pred (masked MSE vs stop-gradient target)
       - projector head → L_SIGReg (Epps-Pulley Gaussianity penalty)
 
-    Phase 0: lam=0.0, no actual masking (all tokens are context, 4-token proxy target).
+    When masker is provided (Phase 1+), the context encoder sees only unmasked tubes and
+    the predictor reconstructs target-encoder output at masked positions.
+    When masker is None (Phase 0 compat), a 4-token proxy target is used instead.
     """
 
     def __init__(
@@ -26,6 +28,7 @@ class VideoJEPAModule(L.LightningModule):
         predictor: nn.Module,
         projector: nn.Module,
         sigreg_loss: SIGRegLoss,
+        masker: Any = None,             # TubeMasker or None (duck-typed: __call__(N, device))
         lam: float = 0.0,
         ema_decay: float = 0.996,
         lr: float = 3e-4,
@@ -33,27 +36,33 @@ class VideoJEPAModule(L.LightningModule):
     ) -> None:
         super().__init__()
         self.save_hyperparameters(ignore=["encoder", "target_encoder", "predictor",
-                                          "projector", "sigreg_loss"])
+                                          "projector", "sigreg_loss", "masker"])
         self.encoder = encoder
         self.target_encoder = target_encoder
         self.predictor = predictor
         self.projector = projector
         self.sigreg_loss = sigreg_loss
+        self.masker = masker
 
     def training_step(self, batch: tuple, batch_idx: int) -> torch.Tensor:
         x, _ = batch                                        # (B, C, T, H, W)
         B = x.size(0)
 
-        ctx = self.encoder(x)                               # (B, T*N, D)
-        tgt = self.target_encoder.encode(self.encoder, x)  # (B, T*N, D) — detached
+        if self.masker is not None:
+            ctx_idx, tgt_idx = self.masker(self.encoder.num_tubelets, device=x.device)
+            ctx = self.encoder(x, token_indices=ctx_idx)        # (B, N_ctx, D)
+            tgt = self.target_encoder.encode(self.encoder, x)  # (B, N, D) — all tubes, detached
+            tgt_slice = tgt[:, tgt_idx, :]                     # (B, N_tgt, D)
+        else:
+            # Phase 0 compat: no masking, first 4 tokens as proxy target
+            ctx = self.encoder(x)
+            tgt = self.target_encoder.encode(self.encoder, x)
+            tgt_slice = tgt[:, :4, :]
 
-        # Phase 0 proxy: use first 4 tokens as the "masked" target positions
-        N_mask = 4
-        mask_tokens = self.predictor.mask_token.expand(B, N_mask, -1)
-        pred = self.predictor(ctx, mask_tokens)             # (B, N_mask, D)
-        tgt_slice = tgt[:, :N_mask, :]                     # (B, N_mask, D)
-
-        proj = self.projector(ctx)                          # (B, T*N, proj_dim)
+        N_tgt = tgt_slice.size(1)
+        mask_tokens = self.predictor.mask_token.expand(B, N_tgt, -1)
+        pred = self.predictor(ctx, mask_tokens)             # (B, N_tgt, D)
+        proj = self.projector(ctx)                          # (B, N_ctx, proj_dim)
 
         total, l_pred, l_sigreg = sigreg_video_loss(
             pred, tgt_slice, proj, self.sigreg_loss, self.hparams.lam

@@ -1,8 +1,9 @@
 """Pre-training entry point for Video JEPA + SIGReg.
 
 Usage:
-    python scripts/pretrain.py                          # default: 100 steps, cpu
-    python scripts/pretrain.py +experiment=smoke_test  # 2 steps, cpu, no logging
+    python scripts/pretrain.py                                   # default: 100 steps, cpu
+    python scripts/pretrain.py +experiment=smoke_test_phase0     # Phase 0: 2 steps, no masking
+    python scripts/pretrain.py +experiment=smoke_test_phase1     # Phase 1: 2 steps, tube masking
 """
 from __future__ import annotations
 
@@ -30,6 +31,8 @@ def main(cfg: DictConfig) -> None:
     predictor = instantiate(cfg.model.predictor)
     projector = instantiate(cfg.model.projector)
     sigreg_loss = instantiate(cfg.model.sigreg_loss)
+    masker_cfg = cfg.model.get("masker")
+    masker = instantiate(masker_cfg) if masker_cfg is not None else None
 
     module = VideoJEPAModule(
         encoder=encoder,
@@ -37,6 +40,7 @@ def main(cfg: DictConfig) -> None:
         predictor=predictor,
         projector=projector,
         sigreg_loss=sigreg_loss,
+        masker=masker,
         **OmegaConf.to_container(cfg.training, resolve=True),
     )
 

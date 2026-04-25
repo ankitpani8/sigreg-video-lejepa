@@ -1,7 +1,7 @@
 defaults:
   - data: synthetic
-  - model: smoke_test
-  - training: smoke_test
+  - model: smoke_test_phase0
+  - training: smoke_test_phase0
   - _self_
 
 # Trainer defaults — overridden by experiment configs
