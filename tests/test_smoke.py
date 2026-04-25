@@ -80,6 +80,16 @@ def test_predictor_forward() -> None:
     assert out.dtype == torch.float32
 
 
+def test_projector_forward() -> None:
+    from sigreg_video_lejepa.models.projector import SIGRegProjector
+
+    proj = SIGRegProjector(embed_dim=192, hidden_dim=2048, proj_dim=128)
+    x = torch.randn(2, 16, 192)
+    out = proj(x)
+    assert out.shape == (2, 16, 128)
+    assert out.dtype == torch.float32
+
+
 def test_synthetic_dataset_label_roundrobin() -> None:
     ds = SyntheticVideoDataset(num_clips=10, num_classes=5)
     labels = [ds[i][1] for i in range(10)]
