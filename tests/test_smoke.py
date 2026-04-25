@@ -111,6 +111,32 @@ def test_sigreg_loss_forward() -> None:
     assert torch.allclose(total, l_pred)
 
 
+def test_lightning_two_steps() -> None:
+    import lightning as L
+    from torch.utils.data import DataLoader
+
+    from sigreg_video_lejepa.models.encoder import VideoViTEncoder
+    from sigreg_video_lejepa.models.predictor import VideoJEPAPredictor
+    from sigreg_video_lejepa.models.projector import SIGRegProjector
+    from sigreg_video_lejepa.models.target_encoder import SharedTargetEncoder
+    from sigreg_video_lejepa.training.lightning_module import VideoJEPAModule
+    from sigreg_video_lejepa.training.sigreg_loss import SIGRegLoss
+
+    enc = VideoViTEncoder(model_name="vit_tiny_patch16_224", pretrained=False, embed_dim=192, img_size=32)
+    module = VideoJEPAModule(
+        encoder=enc,
+        target_encoder=SharedTargetEncoder(),
+        predictor=VideoJEPAPredictor(embed_dim=192),
+        projector=SIGRegProjector(embed_dim=192),
+        sigreg_loss=SIGRegLoss(num_projections=32),
+        lam=0.0,
+    )
+    ds = SyntheticVideoDataset(num_clips=10, num_frames=4, height=32, width=32)
+    loader = DataLoader(ds, batch_size=2)
+    trainer = L.Trainer(max_steps=2, accelerator="cpu", enable_progress_bar=False, logger=False)
+    trainer.fit(module, loader)
+
+
 def test_synthetic_dataset_label_roundrobin() -> None:
     ds = SyntheticVideoDataset(num_clips=10, num_classes=5)
     labels = [ds[i][1] for i in range(10)]
