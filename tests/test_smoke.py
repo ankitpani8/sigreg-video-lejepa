@@ -69,6 +69,17 @@ def test_ema_target_encoder() -> None:
     assert not out.requires_grad
 
 
+def test_predictor_forward() -> None:
+    from sigreg_video_lejepa.models.predictor import VideoJEPAPredictor
+
+    pred = VideoJEPAPredictor(embed_dim=192, depth=2, num_heads=4)
+    context = torch.randn(2, 16, 192)
+    mask_tokens = torch.randn(2, 4, 192)
+    out = pred(context, mask_tokens)
+    assert out.shape == (2, 4, 192)
+    assert out.dtype == torch.float32
+
+
 def test_synthetic_dataset_label_roundrobin() -> None:
     ds = SyntheticVideoDataset(num_clips=10, num_classes=5)
     labels = [ds[i][1] for i in range(10)]
