@@ -16,14 +16,25 @@ This project bridges the two: **can SIGReg training extend cleanly from images t
 
 ## Roadmap
 
-- [ ] **v0.x — Development on UCF101**
-  - [ ] Data pipeline
-  - [ ] V-JEPA-style architecture
-  - [ ] SIGReg loss
-  - [ ] Pretraining on UCF101
-  - [ ] Linear-probe evaluation
-- [ ] **v1.0 — UCF101 release** (preliminary)
-- [ ] **v2.0 — SSv2 release** (Launch)
+## Roadmap
+
+- [x] **Phase 0 — End-to-end pipeline on synthetic data** ✅
+  - [x] Synthetic video dataset
+  - [x] V-JEPA-style ViT encoder (frame-as-batch patchification)
+  - [x] Target encoder with Shared and EMA modes
+  - [x] Predictor (shallow Transformer)
+  - [x] SIGReg projector head
+  - [x] SIGReg loss (Epps-Pulley + Cramér-Wold projections)
+  - [x] PyTorch Lightning training module
+  - [x] Hydra config system
+  - [x] pytest suite (11 tests, including subprocess integration test)
+- [ ] **Phase 1 — Tubelet embedding + masking** (architecture upgrade, still synthetic data)
+- [ ] **Phase 2 — UCF101 data pipeline**
+- [ ] **Phase 3 — Linear probe evaluation**
+- [ ] **Phase 4 — UCF101 pretraining run** (first time λ > 0)
+- [ ] **v1.0 — UCF101 results released** (preliminary)
+- [ ] **Phase 5–7 — SSv2 scaling**
+- [ ] **v2.0 — SSv2 results released** (LinkedIn launch)
 
 ## Setup
 
