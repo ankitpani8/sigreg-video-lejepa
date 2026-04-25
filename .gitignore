@@ -14,9 +14,9 @@ __pycache__/
 venv/
 env/
 
-# Data — never commit large files
-data/
-datasets/
+# Data — never commit large files (root-anchored to avoid catching src/data package)
+/data/
+/datasets/
 *.mp4
 *.avi
 *.webm
