@@ -25,6 +25,16 @@ def test_synthetic_dataset_determinism() -> None:
     assert torch.equal(clip_a, clip_b)
 
 
+def test_encoder_forward() -> None:
+    from sigreg_video_lejepa.models.encoder import VideoViTEncoder
+
+    enc = VideoViTEncoder(model_name="vit_tiny_patch16_224", pretrained=False, embed_dim=192, img_size=32)
+    x = torch.randn(2, 3, 4, 32, 32)   # B=2, C=3, T=4, H=32, W=32
+    out = enc(x)
+    assert out.shape == (2, 16, 192)    # T*N=4*4=16 patches, D=192
+    assert out.dtype == torch.float32
+
+
 def test_synthetic_dataset_label_roundrobin() -> None:
     ds = SyntheticVideoDataset(num_clips=10, num_classes=5)
     labels = [ds[i][1] for i in range(10)]
