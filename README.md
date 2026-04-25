@@ -23,7 +23,7 @@ This project bridges the two: **can SIGReg training extend cleanly from images t
   - [ ] Pretraining on UCF101
   - [ ] Linear-probe evaluation
 - [ ] **v1.0 — UCF101 release** (preliminary)
-- [ ] **v2.0 — SSv2 release** (LinkedIn launch)
+- [ ] **v2.0 — SSv2 release** (Launch)
 
 ## Setup
 
