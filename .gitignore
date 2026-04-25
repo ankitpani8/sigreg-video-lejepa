@@ -1,0 +1,57 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Data — never commit large files
+data/
+datasets/
+*.mp4
+*.avi
+*.webm
+
+# Model artifacts — never commit
+results/checkpoints/*
+!results/checkpoints/.gitkeep
+*.pt
+*.ckpt
+*.pth
+
+# Logs
+results/logs/*
+!results/logs/.gitkeep
+wandb/
+mlruns/
+lightning_logs/
+
+# Notebook checkpoints
+.ipynb_checkpoints/
+
+# OS / IDE
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Hydra / Lightning
+outputs/
+multirun/
+
+# Secrets
+.env
+.env.*
+!.env.example
+
+# Claude Code
+.claude/settings.local.json
