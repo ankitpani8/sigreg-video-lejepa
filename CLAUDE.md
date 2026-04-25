@@ -33,8 +33,6 @@ Ankit Pani (ankitpani8 on GitHub). 6+ years data science / analytics consulting.
 - **Testing**: pytest
 
 ## Repo Structure
-
-
 src/sigreg_video_lejepa/
 models/        # ViT encoder, predictor, full JEPA
 data/          # UCF101, SSv2 datasets, transforms
@@ -47,6 +45,7 @@ scripts/         # CLI entry points (pretrain.py, eval.py, etc.)
 tests/           # pytest unit tests
 results/         # Checkpoints, logs, figures (gitignored except .gitkeep)
 docs/            # Extended notes, design decisions
+
 ## Compute
 
 - **Local laptop**: Dell Vostro 3525, AMD Ryzen 5 5625U, 8GB RAM, integrated graphics. **Editing/git only — never train here.**
