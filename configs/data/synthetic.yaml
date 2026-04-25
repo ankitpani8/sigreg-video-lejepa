@@ -1,0 +1,11 @@
+dataset:
+  _target_: sigreg_video_lejepa.data.synthetic.SyntheticVideoDataset
+  num_clips: 10
+  num_frames: 4
+  height: 32
+  width: 32
+  num_classes: 5
+  seed: 42
+
+batch_size: 2
+num_workers: 0

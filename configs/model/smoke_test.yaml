@@ -1,0 +1,27 @@
+encoder:
+  _target_: sigreg_video_lejepa.models.encoder.VideoViTEncoder
+  model_name: vit_tiny_patch16_224
+  pretrained: false
+  embed_dim: 192
+  img_size: 32
+
+target_encoder:
+  _target_: sigreg_video_lejepa.models.target_encoder.SharedTargetEncoder
+
+predictor:
+  _target_: sigreg_video_lejepa.models.predictor.VideoJEPAPredictor
+  embed_dim: 192
+  depth: 2
+  num_heads: 4
+
+projector:
+  _target_: sigreg_video_lejepa.models.projector.SIGRegProjector
+  embed_dim: 192
+  hidden_dim: 2048
+  proj_dim: 128
+
+sigreg_loss:
+  _target_: sigreg_video_lejepa.training.sigreg_loss.SIGRegLoss
+  num_projections: 256
+  knots: 17
+  t_max: 3.0

@@ -1,0 +1,16 @@
+defaults:
+  - data: synthetic
+  - model: smoke_test
+  - training: smoke_test
+  - _self_
+
+# Trainer defaults — overridden by experiment configs
+trainer:
+  max_steps: 100
+  accelerator: cpu
+  enable_progress_bar: true
+  logger: true
+
+hydra:
+  run:
+    dir: outputs/${now:%Y-%m-%d}/${now:%H-%M-%S}
