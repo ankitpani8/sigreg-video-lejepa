@@ -90,6 +90,27 @@ def test_projector_forward() -> None:
     assert out.dtype == torch.float32
 
 
+def test_sigreg_loss_forward() -> None:
+    from sigreg_video_lejepa.training.sigreg_loss import SIGRegLoss, sigreg_video_loss
+
+    loss_fn = SIGRegLoss(num_projections=32, knots=17, t_max=3.0)
+
+    proj = torch.randn(2, 16, 128, requires_grad=True)
+    stat = loss_fn(proj)
+    assert stat.shape == ()                 # scalar
+    assert torch.isfinite(stat)
+    stat.backward()
+    assert proj.grad is not None
+
+    # lam=0.0 → total loss equals L_pred exactly
+    pred = torch.randn(2, 4, 192)
+    target = torch.randn(2, 4, 192)
+    proj2 = torch.randn(2, 16, 128)
+    total, l_pred, l_sigreg = sigreg_video_loss(pred, target, proj2, loss_fn, lam=0.0)
+    import torch.nn.functional as F
+    assert torch.allclose(total, l_pred)
+
+
 def test_synthetic_dataset_label_roundrobin() -> None:
     ds = SyntheticVideoDataset(num_clips=10, num_classes=5)
     labels = [ds[i][1] for i in range(10)]
