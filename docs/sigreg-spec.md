@@ -139,40 +139,60 @@ matches the EP formula's leading N.
 L = (1 − λ) · L_pred + λ · L_SIGReg
 ```
 
-### 4.1 Prediction (Invariance) Loss
+### 4.1 Prediction Loss (Masked MSE)
 
-In the LeJEPA reference (no masking predictor):
-
-```
-L_pred = (1/V·N) Σ_v Σ_n ‖proj_{n,v} − μ_n‖²
-```
-
-where μ_n = (1/V) Σ_v proj_{n,v} is the mean projection across views.
-
-In code: `(proj.mean(0) - proj).square().mean()`
-
-**For our video JEPA adaptation** (masked prediction, V-JEPA style): L_pred is the MSE
-between the predictor output at masked positions and the target encoder output at those
-same positions. This replaces the multi-view invariance loss above.
+We use **V-JEPA-style masked prediction**, not LeJEPA's multi-view invariance.
+The context encoder sees only unmasked patches; the predictor is given context tokens plus
+positional mask tokens and must predict the target encoder's output at masked positions.
+The target encoder is always detached — gradients must not flow into it regardless of mode
+(SharedTargetEncoder or EMATargetEncoder).
 
 ```
-L_pred = (1/|masked_tokens|) Σ_masked ‖predictor(context_tokens, mask) − target_tokens‖²
+L_pred = (1 / |masked_tokens|) Σ_masked ‖predictor(context_tokens, mask_pos) − sg(target_encoder(masked_patches))‖²
 ```
 
-### 4.2 SIGReg Applied to: Which Embeddings?
+where `sg(·)` denotes stop-gradient (`.detach()` in PyTorch).
 
-**Open question.** The reference code applies SIGReg to the projected encoder output `proj`
-(a low-dim MLP projection of backbone features). Options for video JEPA:
+**For reference — LeJEPA's image invariance loss (not used here):**
+In the original LeJEPA code (no masking, image SSL), the prediction term is a multi-view
+invariance loss: `(proj.mean(0) - proj).square().mean()`, i.e., each view's projection is
+penalized for deviating from the mean projection across views. We record this for completeness;
+our implementation does not use it.
 
-a) **Context encoder tokens** (all unmasked positions) — most natural.
-b) **Target encoder tokens** (all positions) — what the predictor tries to match.
-c) **A separate projector head** on top of context encoder — cleanest separation of
-   representation space (used in reconstruction) vs. distributional regularization space.
-d) Both (a) and (b).
+### 4.2 SIGReg Applied to: Which Embeddings (Resolved)
 
-**Decision needed before implementing video training.** For Phase 0, this is moot (no
-masking), so we apply SIGReg to the context encoder output directly. Document the chosen
-approach here when resolved.
+**Decision:** SIGReg is applied to a dedicated **MLP projector head** on top of the context
+encoder. The target encoder is detached, so gradients from L_SIGReg would have nowhere to go
+if applied to target encoder outputs. The predictor head and projector head are separate;
+they share only the context encoder backbone.
+
+Architecture:
+
+```
+video frames
+    │
+    ▼
+[Context Encoder]  ──────────────────────────────┐
+    │                                             │
+    ▼                                             ▼
+[Predictor Head]                          [Projector Head]
+(masked → target positions)               (MLP: D→2048→2048→proj_dim)
+    │                                             │
+    ▼                                             ▼
+L_pred = MSE vs sg(target_encoder)         L_SIGReg = EP test
+```
+
+**Projector architecture** (matching LeJEPA reference):
+- Input dim: context encoder output dim D (e.g. 384 for ViT-Small)
+- Hidden layers: two layers of width 2048, each followed by BatchNorm1d + GELU
+- Output dim: `proj_dim` (default 128; configurable)
+- No normalization on output layer
+
+**Which tokens:** SIGReg is computed on the projector output for **all context (unmasked)
+tokens**, pooled across the batch. For a batch of N clips each with T_ctx unmasked tokens,
+the EP statistic sees N × T_ctx samples. This keeps the Epps-Pulley statistic well-populated
+(the O(1/N) bias shrinks as more tokens are used). Masked positions are excluded — the context
+encoder never sees them.
 
 ---
 
@@ -227,30 +247,20 @@ so skip this. Add when implementing distributed training.
 
 ### 6.6 Phase 0 smoke test caveats
 
-With N=10 clips and the SIGReg lambda set to 0.0, the SIGReg term computes but contributes
-nothing to the gradient. The test verifies the statistic is a finite scalar and that
-`.backward()` succeeds — not that it converges to anything meaningful.
+Phase 0 sets λ=0.0. The SIGReg term computes (verifying the forward pass is correct and
+the statistic is a finite scalar) but contributes nothing to the gradient. This is intentional:
+Phase 0 tests pipeline plumbing, not learning. λ becomes nonzero starting Phase 4
+(UCF101 pretraining), at which point it should be tuned from the default of 0.02.
 
 ---
 
 ## 7. Open Questions
 
-- [ ] **Which embeddings?** In the video masked-prediction setting, does SIGReg regularize
-      (a) context encoder outputs, (b) target encoder outputs, or (c) a separate projector
-      head? Reference code uses option (c) with an explicit MLP projector. Resolve before
-      implementing video training.
-
-- [ ] **Projector head needed?** The MINIMAL.md example uses a 3-layer MLP projector
-      (512 → 2048 → 2048 → proj_dim). Is this projector necessary for SIGReg to work, or
-      is regularizing the backbone features directly sufficient? The paper applies SIGReg
-      to the projected space, but doesn't explicitly require a projector for correctness.
-
-- [ ] **SIGReg on masked vs. all tokens?** In masked video prediction, should SIGReg
-      operate on all N×T tokens per video, or only the context (unmasked) tokens? The
-      masked tokens are not directly observed by the context encoder.
-
 - [ ] **λ schedule:** Should λ be constant or warmed up from 0? The reference code uses
-      constant λ. A warmup might help if L_pred dominates early training.
+      constant λ throughout. A warmup from 0 might help if L_pred dominates early training
+      and the representations aren't yet spread enough for the EP test to be meaningful.
+      Defer to Phase 4 (UCF101 pretraining); start with constant λ=0.02 and ablate if
+      training is unstable.
 
 ---
 
