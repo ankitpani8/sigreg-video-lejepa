@@ -1,6 +1,0 @@
-# @package _global_
-trainer:
-  max_steps: 2
-  accelerator: cpu
-  enable_progress_bar: false
-  logger: false
