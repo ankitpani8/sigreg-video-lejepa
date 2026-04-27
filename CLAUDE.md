@@ -1,4 +1,6 @@
-# CLAUDE.md — Project Memory for sigreg-video-lejepa
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 This file is read at the start of every Claude Code session. Keep it current.
 
@@ -29,22 +31,100 @@ Ankit Pani (ankitpani8 on GitHub). 6+ years data science / analytics consulting.
 - **Training**: PyTorch Lightning 2.4+
 - **Configs**: Hydra 1.3+
 - **Experiment tracking**: Weights & Biases (wandb)
-- **Linting**: ruff
+- **Linting**: ruff (line length 100; E501/N806/N812 ignored)
 - **Testing**: pytest
 
-## Repo Structure
-src/sigreg_video_lejepa/
-models/        # ViT encoder, predictor, full JEPA
-data/          # UCF101, SSv2 datasets, transforms
-training/      # Lightning modules, SIGReg loss
-evaluation/    # Linear probe, k-NN eval
-utils/         # Logging, checkpointing helpers
-configs/         # Hydra configs (model/, data/, training/, experiment/)
-notebooks/       # EDA, result analysis, demos
-scripts/         # CLI entry points (pretrain.py, eval.py, etc.)
-tests/           # pytest unit tests
-results/         # Checkpoints, logs, figures (gitignored except .gitkeep)
-docs/            # Extended notes, design decisions
+## Commands
+
+```bash
+# Install (editable, with dev deps)
+uv pip install -e ".[dev]"
+
+# Lint
+ruff check src/
+
+# All tests (fast only)
+pytest -m 'not slow'
+
+# All tests including slow
+pytest
+
+# Single test file
+pytest tests/test_smoke.py
+
+# Single test by name
+pytest tests/test_smoke.py::test_encoder_forward
+
+# Pretrain (default: synthetic data, 100 steps, CPU)
+python scripts/pretrain.py
+
+# Pretrain with an experiment override
+python scripts/pretrain.py +experiment=smoke_test_phase0   # 2 steps, synthetic
+python scripts/pretrain.py +experiment=smoke_test_phase1   # 2 steps, masking active
+python scripts/pretrain.py +experiment=ucf101_dryrun       # 10 steps, real UCF101 (Colab)
+
+# Ad-hoc Hydra overrides
+python scripts/pretrain.py trainer.max_steps=50 data.batch_size=8
+```
+
+## Architecture
+
+### Training Loop Data Flow
+
+```
+Input video (B, C, T, H, W)
+  → TubeletEmbed (Conv3d) → N tubelets of shape (B, N, D)
+  → TubeMasker → ctx_idx (25%), tgt_idx (75%)
+
+Context path:
+  encoder(x, token_indices=ctx_idx) → (B, N_ctx, D)
+  predictor(ctx_tokens, tgt_idx)    → (B, N_tgt, D)  [mask tokens fill gaps]
+  projector(ctx_tokens)             → (B, N_ctx, proj_dim)  [for SIGReg]
+
+Target path:
+  target_encoder(x)[..., tgt_idx, :] → (B, N_tgt, D)  [detached, no grad]
+
+Losses:
+  L_pred   = MSE(predictor output, target encoder output)
+  L_SIGReg = Epps-Pulley characteristic function test on projector output
+  L_total  = (1 − λ) * L_pred + λ * L_SIGReg
+```
+
+**Phase 0** (masker=None): uses a 4-token proxy target instead of real masked prediction. This was the initial scaffolding phase and is retained for smoke tests.
+
+### Key Abstractions
+
+Two duck-typed interfaces avoid isinstance checks in `VideoJEPAModule`:
+
+- **`target_encoder`**: either `SharedTargetEncoder` (weights shared with encoder, update is a no-op) or `EMATargetEncoder` (shadow copy updated with momentum in `on_after_backward`). Both expose `.encode()`.
+- **`masker`**: either `TubeMasker` (returns `ctx_idx, tgt_idx`) or `None` (Phase 0 bypass path).
+
+### SIGReg Loss (`training/sigreg_loss.py`)
+
+Penalizes non-Gaussianity of the projector's embeddings via the Epps-Pulley test:
+1. Project embeddings onto `num_projections=256` random unit vectors → scalar projections.
+2. For each direction, evaluate the empirical characteristic function at `knots=17` points in `[0, t_max=3.0]`.
+3. Integrate the squared deviation from the Gaussian CF using the trapezoidal rule (integration buffers precomputed at `__init__`).
+
+Full mathematical spec: `docs/sigreg-spec.md`.
+
+### Config System (Hydra)
+
+Configs compose from four groups: `data/`, `model/`, `training/`, `experiment/`. Root defaults are in `configs/config.yaml`. Experiment configs use `@package _global_` to override any group simultaneously — this is the main entry point for named runs:
+
+```
+configs/experiment/ucf101_dryrun.yaml
+  → overrides /data=ucf101_small, /model=ucf101_small, /training=ucf101_pretrain
+  → sets trainer.max_steps, trainer.accelerator, data.batch_size
+```
+
+`scripts/pretrain.py` uses `OmegaConf.to_container(cfg, resolve=True)` to convert the composed config to plain dicts before passing to module constructors.
+
+### Data Pipeline
+
+`BaseVideoDataset` handles decord frame sampling and short-clip looping (modulo, no black-frame padding). `UCF101Dataset` adds split-file parsing and a ≥100-class validation gate. `VideoReader` is opened inside `__getitem__` (not `__init__`) for multiprocessing fork safety.
+
+`UCF101Transform` follows V-JEPA 2 augmentations: `RandomResizedCrop(scale=(0.3, 1.0))` + `RandomHFlip`; no color jitter or Gaussian blur. Input: `(T, H, W, C)` uint8; output: `(C, T, H, W)` float32, ImageNet-normalized.
 
 ## Compute
 
@@ -129,5 +209,3 @@ docs/            # Extended notes, design decisions
 
 ## Git Commit Guidelines
 - Do not include AI attribution or Co-Authored-By trailers in commit messages.
-
-
