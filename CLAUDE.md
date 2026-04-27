@@ -206,6 +206,7 @@ configs/experiment/ucf101_dryrun.yaml
 ## Deferred Ablations
 
 - **Per-sample masks vs shared-per-step masks.** Phase 1 uses shared. Per-sample may help; defer test to post-v1.0.
-
 ## Git Commit Guidelines
-- Do not include AI attribution or Co-Authored-By trailers in commit messages.
+- Never include "Co-Authored-By: Claude" or any AI attribution trailer in commit messages.
+- Never include "🤖 Generated with Claude Code" or similar promotional footers.
+- Commit messages should be plain, focused, and human-style.
