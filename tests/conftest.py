@@ -19,6 +19,10 @@ _HEIGHT = 64
 _WIDTH = 64
 _FPS = 25
 
+# UCF101Dataset validates ≥100 class subdirectories. We pad with empty dirs so the
+# fixture matches the expected structure without writing extra videos.
+_TOTAL_FAKE_CLASSES = 101
+
 
 def _write_avi(path: Path, num_frames: int, height: int, width: int, fps: int) -> None:
     """Write a synthetic .avi file with mpeg4 codec using PyAV."""
@@ -86,6 +90,10 @@ def ucf101_root(tmp_path_factory: pytest.TempPathFactory) -> Path:
                 train_lines.append(f"{rel} {cls_idx}")
             else:
                 test_lines.append(rel)
+
+    # Pad with empty class directories so the ≥100 validation in UCF101Dataset passes.
+    for pad_idx in range(len(_CLASSES) + 1, _TOTAL_FAKE_CLASSES + 1):
+        (data_root / f"PaddingClass{pad_idx:03d}").mkdir()
 
     (split_root / "classInd.txt").write_text("\n".join(classind_lines) + "\n")
     (split_root / "trainlist01.txt").write_text("\n".join(train_lines) + "\n")

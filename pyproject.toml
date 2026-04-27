@@ -60,3 +60,6 @@ ignore = [
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["src"]
+markers = [
+    "slow: marks tests that are slow to run (use -m slow to select, -m 'not slow' to skip)",
+]
