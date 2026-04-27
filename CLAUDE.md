@@ -127,4 +127,7 @@ docs/            # Extended notes, design decisions
 
 - **Per-sample masks vs shared-per-step masks.** Phase 1 uses shared. Per-sample may help; defer test to post-v1.0.
 
+## Git Commit Guidelines
+- Do not include AI attribution or Co-Authored-By trailers in commit messages.
+
 
