@@ -1,0 +1,6 @@
+# lam=0.0 is intentional for dry-run / Phase 2; SIGReg becomes active in Phase 4.
+# At Phase 4, start with lam=0.02 (spec default) and ablate if training is unstable.
+lam: 0.0
+ema_decay: 0.996
+lr: 3.0e-4
+weight_decay: 0.05

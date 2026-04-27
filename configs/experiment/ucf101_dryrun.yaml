@@ -1,0 +1,23 @@
+# @package _global_
+#
+# 10-step dry run on real UCF101 data. Verifies the full pipeline end-to-end.
+# Requires Drive to be mounted and UCF101 data at the configured paths.
+# Run on Colab: python scripts/pretrain.py +experiment=ucf101_dryrun
+#
+# This config will not run locally — test_ucf101_dryrun in tests/test_ucf101.py
+# skips automatically when the Drive path is absent.
+defaults:
+  - override /data: ucf101_small
+  - override /model: ucf101_small
+  - override /training: ucf101_pretrain
+
+trainer:
+  max_steps: 10
+  accelerator: auto   # GPU when available (Colab), CPU otherwise; avoids crash on cpu-only envs
+  enable_progress_bar: true
+  logger: false
+
+data:
+  batch_size: 4
+  num_workers: 2
+  persistent_workers: false  # false to avoid WSL fork hang; safe on Colab Linux
