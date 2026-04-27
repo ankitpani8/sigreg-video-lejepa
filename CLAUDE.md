@@ -99,13 +99,29 @@ docs/            # Extended notes, design decisions
 - Claim alpha or capability we haven't honestly demonstrated
 - Force-push to main
 
+## Phase Status
+
+- Phase 0: ✅ complete (synthetic data, end-to-end pipeline)
+- Phase 1: ✅ complete (tubelet embedding, random tube masking)
+- Phase 2: ✅ complete (UCF101 data pipeline — real data, configs, integration test)
+- Phase 3: next (linear probe evaluation)
+
 ## Open Questions / Active Decisions
 
 (Update this section as the project evolves.)
 
-- [ ] Backbone size for UCF101 prototype: ViT-Tiny vs ViT-Small?
-- [ ] SIGReg lambda schedule: constant or warmup?
-- [ ] Frame sampling rate for UCF101: 8, 16, or 32 frames per clip?
+- [x] Backbone size for UCF101 prototype: **ViT-Tiny** (embed_dim=192, resolved in Phase 2)
+- [x] Frame sampling rate for UCF101: **16 frames at ~4 fps** (stride=6, resolved in Phase 2)
+- [ ] SIGReg lambda schedule: constant or warmup? (defer to Phase 4)
+
+## Key Design Decisions (Phase 2)
+
+- **ucf101_small uses 64×64 spatial** (vs V-JEPA 2's 224×224) — deliberate Colab T4 constraint.
+- **Predictor depth=6** (vs V-JEPA 2's depth=12) — same constraint; revisit at scale-up.
+- **V-JEPA 2 augmentations**: scale=(0.3, 1.0), no color jitter, no Gaussian blur.
+- **decord VideoReader opened inside `__getitem__`** (fork safety with DataLoader workers).
+- **Frame looping via modulo** for short clips (no black-frame padding, no skipping).
+- **multi-clip eval** stubbed as `raise NotImplementedError("multi-clip eval: Phase 3")`.
 
 ## Deferred Ablations
 
