@@ -1,0 +1,39 @@
+# UCF101 data config — V-JEPA 2 resolution match (run only if compute allows)
+#
+# Spatial resolution 256×256, tubelet 2×16×16.
+# N = (16/2)×(256/16)×(256/16) = 8×16×16 = 2048 tubelets per clip.
+# Memory ~16× higher than ucf101_small; requires A100/V100, not free Colab T4.
+#
+# Temporal config is identical to ucf101_small: 16 frames at ~4 fps.
+# frame_stride=6 produces ~4 fps from typical 24-30 fps source video.
+
+dataset:
+  _target_: sigreg_video_lejepa.data.ucf101.UCF101Dataset
+  data_root: /content/drive/MyDrive/datasets/ucf101/UCF-101
+  split_root: /content/drive/MyDrive/datasets/ucf101/ucfTrainTestlist
+  split: train
+  num_frames: 16
+  frame_stride: 6
+  transform:
+    _target_: sigreg_video_lejepa.data.transforms.UCF101Transform
+    crop_size: 256
+    scale:
+      - 0.3
+      - 1.0
+    ratio:
+      - 0.75
+      - 1.3333
+    flip_p: 0.5
+    mean:
+      - 0.485
+      - 0.456
+      - 0.406
+    std:
+      - 0.229
+      - 0.224
+      - 0.225
+  local_cache: /content/ucf101_local
+
+batch_size: 8   # memory-constrained at 256×256
+num_workers: 2
+persistent_workers: false

@@ -1,0 +1,42 @@
+# UCF101 data config — compute-constrained variant (v1.0 training target)
+#
+# Spatial resolution is 64×64 (vs V-JEPA 2's 224×224) to fit on free Colab T4.
+# This is a deliberate compute-constrained design choice, not an oversight.
+# Tubelet 2×8×8 at 64×64 → N = (16/2)×(64/8)×(64/8) = 512 tubelets per clip.
+#
+# Temporal config matches V-JEPA 2 exactly: 16 frames at ~4 fps.
+# frame_stride=6 produces ~4 fps from typical 24-30 fps source video.
+# Effective rate varies slightly by source FPS (e.g. 24fps/6=4.0fps, 30fps/6=5.0fps).
+#
+# num_workers > 0 with persistent_workers=True may hang on Windows/WSL; use False.
+
+dataset:
+  _target_: sigreg_video_lejepa.data.ucf101.UCF101Dataset
+  data_root: /content/drive/MyDrive/datasets/ucf101/UCF-101
+  split_root: /content/drive/MyDrive/datasets/ucf101/ucfTrainTestlist
+  split: train
+  num_frames: 16
+  frame_stride: 6
+  transform:
+    _target_: sigreg_video_lejepa.data.transforms.UCF101Transform
+    crop_size: 64
+    scale:
+      - 0.3
+      - 1.0
+    ratio:
+      - 0.75
+      - 1.3333
+    flip_p: 0.5
+    mean:
+      - 0.485
+      - 0.456
+      - 0.406
+    std:
+      - 0.229
+      - 0.224
+      - 0.225
+  local_cache: /content/ucf101_local  # set to null to read directly from Drive (20-100x slower)
+
+batch_size: 32
+num_workers: 2
+persistent_workers: false  # true may hang on WSL; safe to enable on Colab Linux
