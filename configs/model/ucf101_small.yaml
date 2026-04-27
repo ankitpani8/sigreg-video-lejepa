@@ -1,0 +1,44 @@
+# Model config for ucf101_small (64×64, 16 frames, ViT-Tiny)
+#
+# Tubelet: 2×8×8 at 64×64 → N = (16/2)×(64/8)×(64/8) = 512 tubelets per clip.
+# h_patch=8, w_patch=8 — differs from Phase 0/1 smoke configs which used 16×16
+# to match the 32×32 synthetic resolution. Here we halve patch size to preserve
+# spatial granularity at 64×64.
+#
+# ViT-Tiny (vit_tiny_patch16_224) is natively embed_dim=192 in timm.
+
+encoder:
+  _target_: sigreg_video_lejepa.models.encoder.VideoViTEncoder
+  model_name: vit_tiny_patch16_224
+  pretrained: false
+  embed_dim: 192
+  img_size: 64
+  num_frames: 16
+  t_patch: 2
+  h_patch: 8   # 64/8 = 8 spatial patches per axis; total N = 512 tubelets
+  w_patch: 8
+
+masker:
+  _target_: sigreg_video_lejepa.data.masking.TubeMasker
+  mask_ratio: 0.75  # 384 target, 128 context out of 512 tubelets
+
+target_encoder:
+  _target_: sigreg_video_lejepa.models.target_encoder.SharedTargetEncoder
+
+predictor:
+  _target_: sigreg_video_lejepa.models.predictor.VideoJEPAPredictor
+  embed_dim: 192
+  depth: 6        # Colab-T4 compromise; V-JEPA 2 reference uses depth=12. Revisit at scale-up.
+  num_heads: 6
+
+projector:
+  _target_: sigreg_video_lejepa.models.projector.SIGRegProjector
+  embed_dim: 192
+  hidden_dim: 2048
+  proj_dim: 128
+
+sigreg_loss:
+  _target_: sigreg_video_lejepa.training.sigreg_loss.SIGRegLoss
+  num_projections: 256
+  knots: 17
+  t_max: 3.0
