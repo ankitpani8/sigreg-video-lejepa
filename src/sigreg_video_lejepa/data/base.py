@@ -93,8 +93,22 @@ class BaseVideoDataset(Dataset, ABC):
         return [(start + t * self.frame_stride) % total_frames for t in range(self.num_frames)]
 
     def _sample_frame_indices_eval(self, total_frames: int) -> list[list[int]]:
-        """4 evenly-spaced clips for multi-clip evaluation. Phase 3 implements this."""
-        raise NotImplementedError("multi-clip eval: Phase 3")
+        """4 evenly-spaced clips for multi-clip evaluation.
+
+        Clip starts are distributed uniformly from 0 to max_start (= total_frames - clip_len).
+        For short videos where total_frames < clip_len, all starts are 0 and modulo looping
+        (inherited from the train path) handles the short-clip case without black-frame padding.
+        """
+        num_clips = 4
+        clip_len = self.num_frames * self.frame_stride
+        max_start = max(0, total_frames - clip_len)
+        starts = [
+            int(round(i * max_start / (num_clips - 1))) for i in range(num_clips)
+        ]
+        return [
+            [(start + t * self.frame_stride) % total_frames for t in range(self.num_frames)]
+            for start in starts
+        ]
 
     # ------------------------------------------------------------------
     # __getitem__
@@ -110,13 +124,18 @@ class BaseVideoDataset(Dataset, ABC):
 
         if self.split == "train":
             frame_indices = self._sample_frame_indices_train(total_frames)
+            frames: np.ndarray = vr.get_batch(frame_indices).asnumpy()  # (T, H, W, C) uint8
+            del vr
+            clip: torch.Tensor = self.transform(frames)  # (C, T, H, W) float32
         else:
-            frame_indices = self._sample_frame_indices_eval(total_frames)[0]
+            all_clip_indices = self._sample_frame_indices_eval(total_frames)
+            clips: list[torch.Tensor] = []
+            for frame_indices in all_clip_indices:
+                frames = vr.get_batch(frame_indices).asnumpy()  # (T, H, W, C) uint8
+                clips.append(self.transform(frames))             # (C, T, H, W) float32
+            del vr
+            clip = torch.stack(clips, dim=0)                     # (4, C, T, H, W)
 
-        frames: np.ndarray = vr.get_batch(frame_indices).asnumpy()  # (T, H, W, C) uint8
-        del vr
-
-        clip: torch.Tensor = self.transform(frames)  # (C, T, H, W) float32
         return clip, label
 
     def __len__(self) -> int:
