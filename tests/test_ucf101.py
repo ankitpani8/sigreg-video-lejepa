@@ -81,10 +81,17 @@ def test_test_split_labels(ucf101_root: Path) -> None:
     """testlist01.txt has no label column; labels must be inferred from directory."""
     ds = _make_dataset(ucf101_root, split="test")
     assert len(ds) == 3  # 1 clip per class
-    # Access samples directly — __getitem__ on test split raises NotImplementedError
-    # (multi-clip eval is Phase 3), but label inference from classInd.txt must work now.
     labels = {label for _, label in ds.samples}
     assert labels == {0, 1, 2}
+
+
+def test_eval_getitem_multicliip_shape(ucf101_root: Path) -> None:
+    """Eval split __getitem__ returns (4, C, T, H, W) — 4 evenly-spaced clips."""
+    ds = _make_dataset(ucf101_root, split="test")
+    clip, label = ds[0]
+    assert clip.shape == (4, 3, _NUM_FRAMES, 64, 64), f"Got {clip.shape}"
+    assert clip.dtype == torch.float32
+    assert 0 <= label < 3
 
 
 def test_invalid_data_root() -> None:
