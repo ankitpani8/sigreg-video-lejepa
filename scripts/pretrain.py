@@ -160,6 +160,8 @@ def main(cfg: DictConfig) -> None:
             dirpath="checkpoints",
             every_n_train_steps=ckpt_every,
             save_top_k=3,
+            monitor="step",
+            mode="max",
             save_last=True,
             filename="{step:07d}",
         )
