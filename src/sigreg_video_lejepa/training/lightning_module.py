@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 from typing import Any
 
 import lightning as L
@@ -80,14 +81,30 @@ class VideoJEPAModule(L.LightningModule):
         if self.hparams.ema_decay is not None:
             self.target_encoder.update(self.encoder, self.hparams.ema_decay)
 
-    def configure_optimizers(self) -> torch.optim.Optimizer:
+    def configure_optimizers(self):
         params = (
             list(self.encoder.parameters())
             + list(self.predictor.parameters())
             + list(self.projector.parameters())
         )
-        return torch.optim.AdamW(
+        optimizer = torch.optim.AdamW(
             params,
             lr=self.hparams.lr,
             weight_decay=self.hparams.weight_decay,
         )
+        if self.hparams.total_steps > 0:
+            warmup = self.hparams.warmup_steps
+            total = self.hparams.total_steps
+
+            def _lr_lambda(step: int) -> float:
+                if step < warmup:
+                    return float(step) / max(1, warmup)
+                progress = float(step - warmup) / max(1, total - warmup)
+                return max(0.0, 0.5 * (1.0 + math.cos(math.pi * progress)))
+
+            scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, _lr_lambda)
+            return {
+                "optimizer": optimizer,
+                "lr_scheduler": {"scheduler": scheduler, "interval": "step", "frequency": 1},
+            }
+        return optimizer
