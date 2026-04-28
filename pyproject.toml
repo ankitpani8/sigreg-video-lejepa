@@ -26,6 +26,7 @@ dependencies = [
     "rich>=13.9.0",
     "wandb>=0.18.0",
     "torchmetrics>=1.4.0",
+    "huggingface_hub>=0.24.0",
 ]
 
 [project.optional-dependencies]
