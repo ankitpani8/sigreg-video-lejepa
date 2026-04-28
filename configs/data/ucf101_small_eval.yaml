@@ -1,0 +1,31 @@
+# UCF101 eval data config — center-crop only, no augmentation, test split.
+#
+# Used by extract_features.py for both train and test feature extraction.
+# The script overrides split='train' when building the train-split dataset.
+#
+# UCF101EvalTransform: resize short side to int(64 * 256/224) = 73px, center-crop to 64×64.
+# Same paths and frame config as ucf101_small.yaml.
+
+dataset:
+  _target_: sigreg_video_lejepa.data.ucf101.UCF101Dataset
+  data_root: /content/drive/MyDrive/datasets/ucf101/UCF-101
+  split_root: /content/drive/MyDrive/datasets/ucf101/ucfTrainTestlist
+  split: test
+  num_frames: 16
+  frame_stride: 6
+  transform:
+    _target_: sigreg_video_lejepa.data.transforms.UCF101EvalTransform
+    crop_size: 64
+    mean:
+      - 0.485
+      - 0.456
+      - 0.406
+    std:
+      - 0.229
+      - 0.224
+      - 0.225
+  local_cache: /content/ucf101_local
+
+batch_size: 32
+num_workers: 2
+persistent_workers: false

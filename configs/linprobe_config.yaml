@@ -1,0 +1,23 @@
+# Root Hydra config for extract_features.py and linear_probe.py.
+# Separate from config.yaml (which has a 'training' group) because eval scripts
+# don't use a training group — they use 'evaluation' instead.
+
+defaults:
+  - data: ucf101_small_eval
+  - model: ucf101_small
+  - evaluation: linear_probe
+  - _self_
+
+# Path to a VideoJEPAModule Lightning checkpoint. Null = randomly-initialized encoder.
+# When set, encoder weights are loaded from checkpoint['state_dict'] (keys: encoder.*).
+checkpoint_path: null
+
+trainer:
+  max_epochs: 20
+  accelerator: auto
+  enable_progress_bar: true
+  logger: false
+
+hydra:
+  run:
+    dir: outputs/${now:%Y-%m-%d}/${now:%H-%M-%S}

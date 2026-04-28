@@ -1,0 +1,20 @@
+# @package _global_
+#
+# UCF101 linear probe experiment — uses eval transform, random-init encoder for Phase 3.
+# Run: python scripts/extract_features.py +experiment=ucf101_linprobe
+#      python scripts/linear_probe.py     +experiment=ucf101_linprobe
+#
+# Phase 4+: set checkpoint_path to a real pretrained checkpoint to get meaningful numbers.
+# Real runs on Kaggle: use notebooks/02_kaggle_linprobe.ipynb.
+
+defaults:
+  - override /data: ucf101_small_eval
+
+# null = randomly-initialized encoder. Replace with a real checkpoint path in Phase 4.
+checkpoint_path: null
+
+trainer:
+  max_epochs: 2   # smoke: set to 20 for a real eval run
+  accelerator: auto
+  enable_progress_bar: true
+  logger: false

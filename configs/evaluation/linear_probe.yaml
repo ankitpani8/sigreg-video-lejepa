@@ -1,0 +1,12 @@
+# Linear probe hyperparameters — V-JEPA 2 UCF101 linear-probe protocol.
+#
+# SGD with cosine decay, no weight decay. These are standard SSL linear-probe
+# hyperparameters; reference: V-JEPA 2 (Table 3, UCF101).
+
+lr: 0.1
+momentum: 0.9
+weight_decay: 0.0
+num_epochs: 20
+batch_size: 256
+num_classes: 101
+features_dir: results/features
