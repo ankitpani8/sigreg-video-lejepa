@@ -8,6 +8,58 @@ import torch
 import torchvision.transforms.functional as TF
 from PIL import Image
 
+_IMAGENET_MEAN = (0.485, 0.456, 0.406)
+_IMAGENET_STD = (0.229, 0.224, 0.225)
+
+
+class UCF101EvalTransform:
+    """Deterministic eval transform: resize short side, center-crop, normalize.
+
+    Matches V-JEPA 2 eval preprocessing: resize short side to int(crop_size * 256/224),
+    then center-crop to crop_size × crop_size. No randomness.
+
+    Input:  (T, H, W, C) uint8 numpy array
+    Output: (C, T, H, W) float32 tensor, ImageNet-normalized
+    """
+
+    def __init__(
+        self,
+        crop_size: int = 224,
+        mean: tuple[float, float, float] = _IMAGENET_MEAN,
+        std: tuple[float, float, float] = _IMAGENET_STD,
+    ) -> None:
+        self.crop_size = crop_size
+        self.resize_size = int(crop_size * 256 / 224)
+        self.mean = list(mean)
+        self.std = list(std)
+
+    def __call__(self, frames: np.ndarray) -> torch.Tensor:
+        """
+        Args:
+            frames: (T, H, W, C) uint8 numpy array
+        Returns:
+            (C, T, H, W) float32 normalized tensor
+        """
+        T = frames.shape[0]
+        out_frames: list[torch.Tensor] = []
+        for t in range(T):
+            img = Image.fromarray(frames[t])
+            h, w = img.height, img.width
+            # Resize short side to resize_size, preserve aspect ratio
+            if h <= w:
+                new_h = self.resize_size
+                new_w = int(round(w * self.resize_size / h))
+            else:
+                new_w = self.resize_size
+                new_h = int(round(h * self.resize_size / w))
+            img = TF.resize(img, [new_h, new_w], TF.InterpolationMode.BILINEAR)
+            img = TF.center_crop(img, self.crop_size)
+            tensor = TF.to_tensor(img)
+            tensor = TF.normalize(tensor, self.mean, self.std)
+            out_frames.append(tensor)
+
+        return torch.stack(out_frames, dim=1)  # (C, T, H, W)
+
 
 class UCF101Transform:
     """V-JEPA 2 spatial augmentation pipeline for video clips.
