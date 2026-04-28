@@ -1,0 +1,27 @@
+# @package _global_
+#
+# Phase 4 — EMA baseline mode, seed 0.
+# Overrides target_encoder to EMATargetEncoder; all other hyperparameters
+# identical to the SIGReg configs for a controlled comparison.
+defaults:
+  - override /data: ucf101_small
+  - override /model: ucf101_small
+  - override /training: ucf101_pretrain_ema
+
+seed: 0
+
+model:
+  target_encoder:
+    _target_: sigreg_video_lejepa.models.target_encoder.EMATargetEncoder
+
+trainer:
+  max_steps: 25000
+  accelerator: auto
+  precision: 16-mixed
+  enable_progress_bar: true
+  logger: true
+
+data:
+  batch_size: 32
+  num_workers: 4
+  persistent_workers: true

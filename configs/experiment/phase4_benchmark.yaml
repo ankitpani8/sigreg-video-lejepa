@@ -1,0 +1,28 @@
+# @package _global_
+#
+# Throughput benchmark for Phase 4 step-time estimation.
+# Benchmark uses SIGReg mode; EMA mode adds ~5% per-step overhead from the EMA
+# update in on_after_backward. Apply this margin when extrapolating to EMA runs.
+#
+# Timing is reported by BenchmarkTimingCallback over steps 101-1000 (skips
+# first 100 warmup steps where the dataloader workers are still initialising).
+defaults:
+  - override /data: ucf101_small
+  - override /model: ucf101_small
+  - override /training: ucf101_pretrain_sigreg
+
+seed: 0
+
+benchmark: true
+
+trainer:
+  max_steps: 1000
+  accelerator: auto
+  precision: 16-mixed
+  enable_progress_bar: true
+  logger: false
+
+data:
+  batch_size: 32
+  num_workers: 4
+  persistent_workers: true

@@ -1,0 +1,21 @@
+# @package _global_
+#
+# Phase 4 — SIGReg mode, seed 1.
+defaults:
+  - override /data: ucf101_small
+  - override /model: ucf101_small
+  - override /training: ucf101_pretrain_sigreg
+
+seed: 1
+
+trainer:
+  max_steps: 25000
+  accelerator: auto
+  precision: 16-mixed
+  enable_progress_bar: true
+  logger: true
+
+data:
+  batch_size: 32
+  num_workers: 4
+  persistent_workers: true
