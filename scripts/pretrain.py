@@ -28,6 +28,8 @@ def main(cfg: DictConfig) -> None:
 
     encoder = instantiate(cfg.model.encoder)
     target_encoder = instantiate(cfg.model.target_encoder)
+    if hasattr(target_encoder, "initialize_from"):
+        target_encoder.initialize_from(encoder)
     predictor = instantiate(cfg.model.predictor)
     projector = instantiate(cfg.model.projector)
     sigreg_loss = instantiate(cfg.model.sigreg_loss)

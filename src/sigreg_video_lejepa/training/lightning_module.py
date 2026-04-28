@@ -30,9 +30,11 @@ class VideoJEPAModule(L.LightningModule):
         sigreg_loss: SIGRegLoss,
         masker: Any = None,             # TubeMasker or None (duck-typed: __call__(N, device))
         lam: float = 0.0,
-        ema_decay: float = 0.996,
+        ema_decay: float | None = 0.996,
         lr: float = 3e-4,
         weight_decay: float = 0.05,
+        warmup_steps: int = 0,
+        total_steps: int = 0,
     ) -> None:
         super().__init__()
         self.save_hyperparameters(ignore=["encoder", "target_encoder", "predictor",
@@ -75,7 +77,8 @@ class VideoJEPAModule(L.LightningModule):
         return total
 
     def on_after_backward(self) -> None:
-        self.target_encoder.update(self.encoder, self.hparams.ema_decay)
+        if self.hparams.ema_decay is not None:
+            self.target_encoder.update(self.encoder, self.hparams.ema_decay)
 
     def configure_optimizers(self) -> torch.optim.Optimizer:
         params = (

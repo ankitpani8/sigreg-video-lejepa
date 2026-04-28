@@ -87,7 +87,8 @@ def test_ema_target_encoder() -> None:
     from sigreg_video_lejepa.models.target_encoder import EMATargetEncoder
 
     enc = VideoViTEncoder(**_ENC_KWARGS)
-    target = EMATargetEncoder(enc)
+    target = EMATargetEncoder()
+    target.initialize_from(enc)
 
     with torch.no_grad():
         for p in enc.parameters():
