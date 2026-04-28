@@ -50,6 +50,7 @@ This project bridges the two: **can SIGReg training extend cleanly from images t
   - [x] pytest suite: 8 tests including subprocess end-to-end
   - [x] Kaggle notebook: notebooks/02_kaggle_linprobe.ipynb
 - [ ] **Phase 4 — UCF101 pretraining run** (first time λ > 0)
+  - [x] Phase 4 harness ready
 - [ ] **v1.0 — UCF101 results released** (preliminary)
 - [ ] **Phase 5–7 — SSv2 scaling**
 - [ ] **v2.0 — SSv2 results released** (LinkedIn launch)
