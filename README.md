@@ -16,8 +16,6 @@ This project bridges the two: **can SIGReg training extend cleanly from images t
 
 ## Roadmap
 
-## Roadmap
-
 - [x] **Phase 0 — End-to-end pipeline on synthetic data** ✅
   - [x] Synthetic video dataset
   - [x] V-JEPA-style ViT encoder (frame-as-batch patchification)
@@ -42,7 +40,15 @@ This project bridges the two: **can SIGReg training extend cleanly from images t
   - [x] ucf101_vjepa2_match config (256×256, 2048 tubelets — for scale-up)
   - [x] ucf101_dryrun experiment (10 steps, accelerator=auto)
   - [x] pytest suite: 8 unit tests + 1 @slow integration test at 512-tube scale
-- [ ] **Phase 3 — Linear probe evaluation**
+- [x] **Phase 3 — Linear probe evaluation** ✅
+  - [x] UCF101EvalTransform (center-crop, no augmentation)
+  - [x] Multi-clip eval path in BaseVideoDataset (4 evenly-spaced clips → (4,C,T,H,W))
+  - [x] FeatureExtractor (mean-pool tokens, multi-clip averaging)
+  - [x] LinearProbe (SGD + cosine LR, top-1/top-5 via torchmetrics)
+  - [x] extract_features.py + linear_probe.py (Hydra, resumable extraction)
+  - [x] ucf101_linprobe experiment config (random-init encoder for Phase 3 testing)
+  - [x] pytest suite: 8 tests including subprocess end-to-end
+  - [x] Kaggle notebook: notebooks/02_kaggle_linprobe.ipynb
 - [ ] **Phase 4 — UCF101 pretraining run** (first time λ > 0)
 - [ ] **v1.0 — UCF101 results released** (preliminary)
 - [ ] **Phase 5–7 — SSv2 scaling**

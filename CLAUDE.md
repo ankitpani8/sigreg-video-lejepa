@@ -65,6 +65,10 @@ python scripts/pretrain.py +experiment=ucf101_dryrun       # 10 steps, real UCF1
 
 # Ad-hoc Hydra overrides
 python scripts/pretrain.py trainer.max_steps=50 data.batch_size=8
+
+# Linear probe evaluation (two-stage; run extract first, then probe)
+python scripts/extract_features.py +experiment=ucf101_linprobe   # saves features to results/features/
+python scripts/linear_probe.py     +experiment=ucf101_linprobe   # loads features, trains probe, prints top-1/5
 ```
 
 ## Architecture
@@ -108,6 +112,25 @@ Penalizes non-Gaussianity of the projector's embeddings via the Epps-Pulley test
 
 Full mathematical spec: `docs/sigreg-spec.md`.
 
+### Evaluation Pipeline (Phase 3+)
+
+Two-stage linear probe: extract encoder features once (expensive), train the probe many times (cheap):
+
+```
+extract_features.py → results/features/{train,test}_{features,labels}.pt
+linear_probe.py     → loads .pt files → trains nn.Linear → top-1 / top-5 accuracy
+```
+
+`FeatureExtractor` auto-detects batch shape: 5D `(B,C,T,H,W)` = single-clip train path;
+6D `(B,4,C,T,H,W)` = multi-clip test path (4 clips averaged). Both paths mean-pool encoder
+tokens `(B,N,D) → (B,D)` before averaging clips.
+
+`UCF101EvalTransform`: resize short side to `int(crop_size × 256/224)`, then center-crop.
+For `crop_size=64` this is 73px → 64px. No randomness.
+
+Both eval scripts use `configs/linprobe_config.yaml` as root (separate from `config.yaml`
+because eval uses an `evaluation/` config group instead of `training/`).
+
 ### Config System (Hydra)
 
 Configs compose from four groups: `data/`, `model/`, `training/`, `experiment/`. Root defaults are in `configs/config.yaml`. Experiment configs use `@package _global_` to override any group simultaneously — this is the main entry point for named runs:
@@ -118,7 +141,7 @@ configs/experiment/ucf101_dryrun.yaml
   → sets trainer.max_steps, trainer.accelerator, data.batch_size
 ```
 
-`scripts/pretrain.py` uses `OmegaConf.to_container(cfg, resolve=True)` to convert the composed config to plain dicts before passing to module constructors.
+`scripts/pretrain.py` uses `OmegaConf.to_container(cfg, resolve=True)` to convert the composed config to plain dicts before passing to module constructors. **Every key in `configs/training/*.yaml` must exactly match a `VideoJEPAModule.__init__` parameter name** — they are spread as `**kwargs` directly.
 
 ### Data Pipeline
 
@@ -126,10 +149,13 @@ configs/experiment/ucf101_dryrun.yaml
 
 `UCF101Transform` follows V-JEPA 2 augmentations: `RandomResizedCrop(scale=(0.3, 1.0))` + `RandomHFlip`; no color jitter or Gaussian blur. Input: `(T, H, W, C)` uint8; output: `(C, T, H, W)` float32, ImageNet-normalized.
 
+`data/cache.py::ensure_cached` copies `data_root` to local SSD during `UCF101Dataset.__init__` (main process), before `DataLoader` forks workers — intentional fork-safety. `split='val'` silently aliases to `testlist01.txt`, same as `split='test'`.
+
 ## Compute
 
 - **Local laptop**: Dell Vostro 3525, AMD Ryzen 5 5625U, 8GB RAM, integrated graphics. **Editing/git only — never train here.**
-- **Training**: Google Colab Pro. Free tier T4 for prototyping; A100/V100 when available.
+- **Pretraining**: Google Colab Pro. Free tier T4 for prototyping; A100/V100 when available.
+- **Evaluation (Phase 3+)**: Kaggle (UCF101 is a built-in Kaggle dataset; T4 × 2 free). Notebook: `notebooks/02_kaggle_linprobe.ipynb`.
 - **Storage**: Google Drive Premium (5TB). Mounts in Colab as `/content/drive/MyDrive/`.
 
 ## Key References
@@ -184,7 +210,8 @@ configs/experiment/ucf101_dryrun.yaml
 - Phase 0: ✅ complete (synthetic data, end-to-end pipeline)
 - Phase 1: ✅ complete (tubelet embedding, random tube masking)
 - Phase 2: ✅ complete (UCF101 data pipeline — real data, configs, integration test)
-- Phase 3: next (linear probe evaluation)
+- Phase 3: ✅ complete (linear probe evaluation — FeatureExtractor, LinearProbe, Kaggle notebook)
+- Phase 4: next (UCF101 pretraining run, first run with λ > 0)
 
 ## Open Questions / Active Decisions
 
@@ -201,11 +228,12 @@ configs/experiment/ucf101_dryrun.yaml
 - **V-JEPA 2 augmentations**: scale=(0.3, 1.0), no color jitter, no Gaussian blur.
 - **decord VideoReader opened inside `__getitem__`** (fork safety with DataLoader workers).
 - **Frame looping via modulo** for short clips (no black-frame padding, no skipping).
-- **multi-clip eval** stubbed as `raise NotImplementedError("multi-clip eval: Phase 3")`.
+- **multi-clip eval** implemented in Phase 3: eval `__getitem__` returns `(4,C,T,H,W)`.
 
 ## Deferred Ablations
 
 - **Per-sample masks vs shared-per-step masks.** Phase 1 uses shared. Per-sample may help; defer test to post-v1.0.
+
 ## Git Commit Guidelines
 - Never include "Co-Authored-By: Claude" or any AI attribution trailer in commit messages.
 - Never include "🤖 Generated with Claude Code" or similar promotional footers.
