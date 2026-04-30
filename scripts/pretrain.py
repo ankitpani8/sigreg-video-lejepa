@@ -27,6 +27,7 @@ import logging
 import os
 import time
 from pathlib import Path
+import re
 
 import hydra
 import lightning as L
@@ -44,45 +45,40 @@ from sigreg_video_lejepa.utils.wandb_setup import get_or_create_run_id
 
 log = logging.getLogger(__name__)
 
-
 class HFPushCallback(L.Callback):
-    """Pushes step-wise ModelCheckpoint files to HF Hub immediately after they are written."""
+    """Pushes new step-wise ModelCheckpoint files to HF Hub immediately after they are written."""
     def __init__(self, repo_id: str, experiment_name: str, token: str) -> None:
         self.repo_id = repo_id
         self.experiment_name = experiment_name
         self.token = token
-        self._last_pushed_step: int = -1
+        self._pushed_files: set[str] = set()
     
     def on_train_batch_end(self, trainer, pl_module, outputs, batch, batch_idx) -> None:
         for cb in trainer.callbacks:
             if isinstance(cb, ModelCheckpoint):
-                # Find the most recent step-wise checkpoint (skip last.ckpt)
                 ckpt_dir = Path(cb.dirpath) if cb.dirpath else None
                 if not ckpt_dir or not ckpt_dir.exists():
                     return
                 
-                step_files = sorted(ckpt_dir.glob("step_*.ckpt"))
-                if not step_files:
-                    return
-                
-                latest_step_file = step_files[-1]
-                current_step = trainer.global_step
-                
-                # Only push if we haven't pushed at this step yet
-                if current_step > self._last_pushed_step:
-                    try:
-                        save_checkpoint_to_hf(
-                            latest_step_file, 
-                            self.repo_id, 
-                            self.experiment_name, 
-                            current_step, 
-                            self.token
-                        )
-                        log.info("Pushed checkpoint step %d to HF Hub: %s", current_step, latest_step_file.name)
-                        self._last_pushed_step = current_step
-                    except Exception as exc:
-                        log.warning("HF push failed at step %d: %s", current_step, exc)
+                # Find step-wise files we haven't pushed yet
+                for step_file in sorted(ckpt_dir.glob("step_*.ckpt")):
+                    if step_file.name not in self._pushed_files:
+                        # Extract step number from filename
+                        match = re.search(r"step_(?:step=)?(\d+)\.ckpt$", step_file.name)
+                        if not match:
+                            continue
+                        step = int(match.group(1))
+                        try:
+                            save_checkpoint_to_hf(
+                                step_file, self.repo_id, self.experiment_name, step, self.token
+                            )
+                            log.info("Pushed checkpoint step %d to HF Hub: %s", step, step_file.name)
+                            self._pushed_files.add(step_file.name)
+                        except Exception as exc:
+                            log.warning("HF push failed for %s: %s", step_file.name, exc)
                 break
+
+
 
 class BenchmarkTimingCallback(L.Callback):
     """Measures average sec/step over steps 101+ and prints a summary at training end.
