@@ -169,7 +169,23 @@ def main(cfg: DictConfig) -> None:
         if hf_repo_id and hf_token:
             experiment = run_name or "unnamed"
             callbacks.append(HFPushCallback(hf_repo_id, experiment, hf_token))
-
+    
+    # Always add ModelCheckpoint so HFPushCallback has files to push.
+    # Without this, Lightning disables its default checkpointing when callbacks list is non-empty.
+    if not cfg.get("benchmark", False):
+        ckpt_dir = Path("results/checkpoints") / (run_name or "unnamed")
+        ckpt_dir.mkdir(parents=True, exist_ok=True)
+        callbacks.append(
+            ModelCheckpoint(
+                dirpath=str(ckpt_dir),
+                filename="step_{step:07d}",
+                every_n_train_steps=cfg.get("checkpoint_every_n_steps", 1000),
+                save_top_k=3,
+                save_last=True,
+                save_on_train_epoch_end=False,
+            )
+        )
+    
     if cfg.get("benchmark", False):
         callbacks.append(BenchmarkTimingCallback(warmup_steps=100))
 
