@@ -161,27 +161,11 @@ def main(cfg: DictConfig) -> None:
     wandb_project: str = cfg.get("wandb_project", "sigreg-video-lejepa")
     ckpt_every: int = cfg.get("checkpoint_every_n_steps", 0)
 
-    # Build callbacks
+# Build callbacks
     callbacks: list[L.Callback] = []
 
-    if ckpt_every > 0:
-        ckpt_cb = ModelCheckpoint(
-            dirpath="checkpoints",
-            every_n_train_steps=ckpt_every,
-            save_top_k=3,
-            monitor="step",
-            mode="max",
-            save_last=True,
-            filename="{step:07d}",
-        )
-        callbacks.append(ckpt_cb)
-        if hf_repo_id and hf_token:
-            experiment = run_name or "unnamed"
-            callbacks.append(HFPushCallback(hf_repo_id, experiment, hf_token))
-    
-    # Always add ModelCheckpoint so HFPushCallback has files to push.
-    # Without this, Lightning disables its default checkpointing when callbacks list is non-empty.
     if not cfg.get("benchmark", False):
+        # Single ModelCheckpoint — saves all step-wise checkpoints + last.ckpt
         ckpt_dir = Path("results/checkpoints") / (run_name or "unnamed")
         ckpt_dir.mkdir(parents=True, exist_ok=True)
         callbacks.append(
@@ -189,14 +173,20 @@ def main(cfg: DictConfig) -> None:
                 dirpath=str(ckpt_dir),
                 filename="step_{step:07d}",
                 every_n_train_steps=cfg.get("checkpoint_every_n_steps", 1000),
-                save_top_k=-1, # Save all step-wise checkpoints; HF push handles persistence
+                save_top_k=-1,
                 save_last=True,
                 save_on_train_epoch_end=False,
             )
         )
-    
+        # HFPushCallback added AFTER ModelCheckpoint so callback iteration finds the correct one
+        if hf_repo_id and hf_token:
+            experiment = run_name or "unnamed"
+            callbacks.append(HFPushCallback(hf_repo_id, experiment, hf_token))
+
     if cfg.get("benchmark", False):
         callbacks.append(BenchmarkTimingCallback(warmup_steps=100))
+
+
 
     # Build trainer kwargs — handle logger separately so WandbLogger can be injected
     trainer_kwargs = OmegaConf.to_container(cfg.trainer, resolve=True)
