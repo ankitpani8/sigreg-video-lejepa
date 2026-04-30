@@ -195,7 +195,8 @@ def main(cfg: DictConfig) -> None:
     if run_name and raw_logger:
         from lightning.pytorch.loggers import WandbLogger
 
-        run_id = get_or_create_run_id(wandb_project, "ankitpani", run_name, wandb_token)
+        wandb_entity = cfg.get("wandb_entity", os.environ.get("WANDB_ENTITY", "ankitpani"))
+        run_id = get_or_create_run_id(wandb_project, wandb_entity, run_name, wandb_token)
         trainer_kwargs["logger"] = WandbLogger(
             project=wandb_project,
             name=run_name,
