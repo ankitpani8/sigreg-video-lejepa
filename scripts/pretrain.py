@@ -180,7 +180,9 @@ def main(cfg: DictConfig) -> None:
                 dirpath=str(ckpt_dir),
                 filename="step_{step:07d}",
                 every_n_train_steps=cfg.get("checkpoint_every_n_steps", 1000),
-                save_top_k=3,
+                save_top_k=3, # Save all step-wise checkpoints; HF push handles persistence
+                monitor='trainer/global_step',
+                mode='max',  
                 save_last=True,
                 save_on_train_epoch_end=False,
             )
