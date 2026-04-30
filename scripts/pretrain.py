@@ -212,6 +212,8 @@ def main(cfg: DictConfig) -> None:
     if cfg.get("resume_from_hf", False) and hf_repo_id and hf_token:
         local_dir = Path("/tmp/hf_resume")
         local_dir.mkdir(parents=True, exist_ok=True)
+        log.info("Resume check: run_name=%r, hf_repo_id=%r, hf_token_set=%s",
+                 run_name, hf_repo_id, hf_token is not None)
         experiment = run_name or "unnamed"
         found = load_latest_checkpoint_from_hf(hf_repo_id, experiment, hf_token, local_dir)
         if found:
