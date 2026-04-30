@@ -46,30 +46,43 @@ log = logging.getLogger(__name__)
 
 
 class HFPushCallback(L.Callback):
-    """Pushes each new ModelCheckpoint file to HF Hub immediately after it is written."""
-
+    """Pushes step-wise ModelCheckpoint files to HF Hub immediately after they are written."""
     def __init__(self, repo_id: str, experiment_name: str, token: str) -> None:
         self.repo_id = repo_id
         self.experiment_name = experiment_name
         self.token = token
-        self._last_pushed: str = ""
-
+        self._last_pushed_step: int = -1
+    
     def on_train_batch_end(self, trainer, pl_module, outputs, batch, batch_idx) -> None:
         for cb in trainer.callbacks:
             if isinstance(cb, ModelCheckpoint):
-                path = cb.last_model_path
-                if path and path != self._last_pushed and Path(path).exists():
-                    step = trainer.global_step
+                # Find the most recent step-wise checkpoint (skip last.ckpt)
+                ckpt_dir = Path(cb.dirpath) if cb.dirpath else None
+                if not ckpt_dir or not ckpt_dir.exists():
+                    return
+                
+                step_files = sorted(ckpt_dir.glob("step_*.ckpt"))
+                if not step_files:
+                    return
+                
+                latest_step_file = step_files[-1]
+                current_step = trainer.global_step
+                
+                # Only push if we haven't pushed at this step yet
+                if current_step > self._last_pushed_step:
                     try:
                         save_checkpoint_to_hf(
-                            Path(path), self.repo_id, self.experiment_name, step, self.token
+                            latest_step_file, 
+                            self.repo_id, 
+                            self.experiment_name, 
+                            current_step, 
+                            self.token
                         )
-                        log.info("Pushed checkpoint step %d to HF Hub.", step)
-                        self._last_pushed = path
+                        log.info("Pushed checkpoint step %d to HF Hub: %s", current_step, latest_step_file.name)
+                        self._last_pushed_step = current_step
                     except Exception as exc:
-                        log.warning("HF push failed at step %d: %s", step, exc)
+                        log.warning("HF push failed at step %d: %s", current_step, exc)
                 break
-
 
 class BenchmarkTimingCallback(L.Callback):
     """Measures average sec/step over steps 101+ and prints a summary at training end.
