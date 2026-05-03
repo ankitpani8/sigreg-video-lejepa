@@ -4,7 +4,32 @@ Applying LeJEPA's SIGReg training recipe to a V-JEPA-style video architecture, e
 
 ## Status
 
-🚧 Under active development. v1.0 (UCF101) target: in progress.
+Phase 5 (SIGReg vs EMA controlled comparison, 128×128 / 75k steps) is in progress.
+Phase 4 completed with weak results: SIGReg 3.44% / EMA 4.23% top-1 — both undertrained
+at 64×64 / 25k steps, establishing pipeline correctness but not a meaningful signal.
+Next milestone: v1.1 UCF101 results at meaningful compute scale.
+
+### Phase 4 Results
+
+UCF101 linear probe after 25k steps at 64×64, ViT-Tiny, split 1 (multi-clip):
+
+| Mode   | Top-1  | Top-5  |
+|--------|--------|--------|
+| SIGReg | 3.44%  | 14.03% |
+| EMA    | 4.23%  | 15.25% |
+
+Both modes trained stably with no divergence. The ~0.8% gap is within run-to-run
+variance; neither result meaningfully exceeds the random-features baseline (~5-8%
+for untrained ViT-Tiny on UCF101). Diagnosis: compute scale insufficient.
+Full analysis in [`docs/phase4_results.md`](docs/phase4_results.md).
+
+### Phase 5 (in progress)
+
+128×128 spatial resolution, 75k steps, predictor depth=12 (V-JEPA 2 reference),
+2 seeds per mode (4 runs total). Designed to generate a clean, well-resourced
+comparison between SIGReg and EMA at compute sufficient for useful representation
+learning. See [`docs/design_decisions.md`](docs/design_decisions.md) for the full
+rationale behind every design choice.
 
 ## Motivation
 
@@ -49,11 +74,22 @@ This project bridges the two: **can SIGReg training extend cleanly from images t
   - [x] ucf101_linprobe experiment config (random-init encoder for Phase 3 testing)
   - [x] pytest suite: 8 tests including subprocess end-to-end
   - [x] Kaggle notebook: notebooks/02_kaggle_linprobe.ipynb
-- [ ] **Phase 4 — UCF101 pretraining run** (first time λ > 0)
-  - [x] Phase 4 harness ready
-- [ ] **v1.0 — UCF101 results released** (preliminary)
-- [ ] **Phase 5–7 — SSv2 scaling**
-- [ ] **v2.0 — SSv2 results released** (LinkedIn launch)
+- [x] **Phase 4 — UCF101 pretraining baseline** ✅ (weak result — pipeline validated, representations undertrained at 64×64 / 25k steps)
+  - [x] Phase 4 harness: HF Hub checkpointing, resume, linear probe pipeline
+  - [x] 4 experiment configs: SIGReg/EMA × seed 0/1
+  - [x] Kaggle training notebook (notebooks/03_kaggle_pretrain.ipynb)
+- [x] **v1.0 — UCF101 pipeline complete** ✅ (end-to-end, both modes, honest result reported)
+- [ ] **Phase 5 — SIGReg vs EMA controlled comparison (128×128 / 75k steps)** 🚧 in progress
+  - [x] ucf101_medium configs (128×128, 2,048 tubelets, predictor depth=12)
+  - [x] 4 experiment configs: phase5_{sigreg,ema}_seed{0,1}
+  - [x] docs/design_decisions.md — rationale for all Phase 5 choices
+  - [ ] 4 training runs on Kaggle
+  - [ ] aggregate_results.py --phase 5
+- [ ] **v1.1 — UCF101 results at meaningful scale** (Phase 5 conclusion)
+- [ ] **Phase 6 — Block masking ablation on UCF101** (V-JEPA 2 improved masking applied to the Phase 5 winning method)
+- [ ] **v2.0 — Block masking results** (UCF101 ablation complete)
+- [ ] **Phase 7+ — SSv2 scaling** (deferred until UCF101 results conclusive)
+- [ ] **v3.0 — SSv2 results** (LinkedIn launch)
 
 ## Setup
 
@@ -72,9 +108,44 @@ Download UCF101 once from [CRCV](https://www.crcv.ucf.edu/data/UCF101.php) or th
 - `MyDrive/datasets/ucf101/UCF-101/` — 101 class folders, 13,320 `.avi` files
 - `MyDrive/datasets/ucf101/ucfTrainTestlist/` — split files (`classInd.txt`, `trainlist01.txt`, `testlist01.txt`)
 
-One-time setup. When mounted in Colab at `/content/drive/MyDrive/`, the default configs in `configs/data/ucf101_small.yaml` will find the data automatically. The first training run copies data to `/content/ucf101_local/` (SSD) for fast I/O; subsequent runs reuse the cache.
+One-time setup. When mounted in Colab at `/content/drive/MyDrive/`, the default configs in `configs/data/ucf101_small.yaml` will find the data automatically. The first training run copies data to `/content/ucf101_local/` (SSD) for fast I/O; subsequent runs reuse the cache. Phase 5 configs (`ucf101_medium`) use `/content/ucf101_local_128` — a distinct path so both caches can coexist.
+
+## Open Research Questions
+
+Design choices considered for this project and deferred, with brief rationale.
+See [`docs/design_decisions.md`](docs/design_decisions.md) for the choices that
+were made for Phase 5 and why.
+
+- **Causal-temporal masking** — mask future frames, predict from past. Theoretically
+  motivates temporal extrapolation rather than holistic reconstruction. Deferred because
+  it confounds the SIGReg-vs-EMA comparison and aligns with forecasting tasks rather
+  than UCF101 classification.
+
+- **Stochastic prediction** — Gaussian-output predictor instead of deterministic point
+  estimates. Theoretically captures multi-modal uncertainty in masked tubelet content.
+  Deferred because it changes both the architecture and the loss formulation simultaneously,
+  requiring careful disentanglement from the anti-collapse comparison.
+
+- **Frozen-teacher / SALT-style pretraining** — replace EMA with a pre-trained frozen
+  target encoder (Apple, 2025). Theoretically improves compute efficiency and removes
+  co-evolution dynamics. Deferred because it requires a separate pixel-reconstruction
+  pretraining stage; out of scope for v1.x.
+
+- **VICReg or hybrid anti-collapse mechanisms** — variance-invariance-covariance
+  regularization or combinations with EMA. Deferred because the SIGReg-vs-EMA comparison
+  is the project's core question; mixing methods loses interpretability.
+
+- **Larger encoder (ViT-Small, ViT-Base)** — theoretical fit improves with more data.
+  Deferred because UCF101's 9,500 videos don't justify it; needs Kinetics-400 or larger
+  pretraining data first.
+
+- **Higher spatial resolution (256×256)** — approaches V-JEPA 2 reference. Deferred
+  due to Kaggle T4 VRAM constraints; future TPU work.
+
+- **Action anticipation / world-model evaluation** — evaluate on benchmarks where
+  multi-future imagination matters. Deferred because UCF101 linear probe doesn't test
+  this; would require different evaluation infrastructure.
 
 ## License
 
 @ankitpani8
-
