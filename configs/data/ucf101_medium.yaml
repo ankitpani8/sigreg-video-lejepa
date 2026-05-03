@@ -1,0 +1,41 @@
+# UCF101 data config — Phase 5 medium-scale variant (128×128, 2,048 tubelets)
+#
+# Spatial resolution doubled from Phase 4's 64×64 to 128×128. This gives
+# the encoder 4× more spatial tokens per clip (2,048 vs 512) and sufficient
+# resolution for UCF101 action discrimination without exceeding T4 VRAM at
+# ViT-Tiny / batch 32. If OOM, drop to batch_size: 16.
+#
+# local_cache uses a distinct path (/content/ucf101_local_128) so Phase 4 and
+# Phase 5 caches can coexist on disk in the same environment. This notebook
+# passes local_cache=null, so caching is disabled by default regardless.
+
+dataset:
+  _target_: sigreg_video_lejepa.data.ucf101.UCF101Dataset
+  data_root: /content/drive/MyDrive/datasets/ucf101/UCF-101
+  split_root: /content/drive/MyDrive/datasets/ucf101/ucfTrainTestlist
+  split: train
+  num_frames: 16
+  frame_stride: 6
+  transform:
+    _target_: sigreg_video_lejepa.data.transforms.UCF101Transform
+    crop_size: 128
+    scale:
+      - 0.3
+      - 1.0
+    ratio:
+      - 0.75
+      - 1.3333
+    flip_p: 0.5
+    mean:
+      - 0.485
+      - 0.456
+      - 0.406
+    std:
+      - 0.229
+      - 0.224
+      - 0.225
+  local_cache: /content/ucf101_local_128  # distinct from Phase 4's /content/ucf101_local
+
+batch_size: 32
+num_workers: 2
+persistent_workers: false  # true may hang on WSL; safe to enable on Colab/Kaggle Linux

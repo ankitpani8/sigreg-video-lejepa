@@ -1,0 +1,8 @@
+# SIGReg training config (Phase 5).
+# target_encoder is SharedTargetEncoder (set in ucf101_medium model config by default).
+# ema_decay: null because SharedTargetEncoder.update() is a no-op; EMA plays no role here.
+lam: 0.02
+ema_decay: null
+lr: 3.0e-4
+weight_decay: 0.05
+warmup_steps: 3750  # 5% of 75000

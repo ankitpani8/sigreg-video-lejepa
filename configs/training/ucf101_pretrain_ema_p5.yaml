@@ -1,0 +1,8 @@
+# EMA (baseline) training config (Phase 5).
+# target_encoder overridden to EMATargetEncoder in the phase5_ema_* experiment configs.
+# Hyperparameters identical to ucf101_pretrain_sigreg_p5 for a controlled comparison.
+lam: 0.0
+ema_decay: 0.996
+lr: 3.0e-4
+weight_decay: 0.05
+warmup_steps: 3750  # 5% of 75000
