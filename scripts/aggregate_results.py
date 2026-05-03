@@ -1,14 +1,16 @@
-"""Aggregate Phase 4 linear probe results from HF Hub.
+"""Aggregate linear probe results from HF Hub.
 
 Reads linprobe.json files pushed by notebooks/03_kaggle_pretrain.ipynb Cell 8
 from the shared HF Hub checkpoint repo, computes mean ± std per mode (SIGReg
-vs EMA), writes docs/phase4_results.md, and saves a comparison bar chart.
+vs EMA), writes docs/phase{N}_results.md, and saves a comparison bar chart.
 
-Usage (run locally after all 4 training runs complete):
+Usage (run locally after all training runs for a phase complete):
 
-    python scripts/aggregate_results.py \\
-        --repo-id ankitpani/sigreg-video-lejepa-checkpoints \\
-        --hf-token $HF_TOKEN
+    # Phase 5 (active phase, default):
+    python scripts/aggregate_results.py --hf-token $HF_TOKEN
+
+    # Phase 4 (historical):
+    python scripts/aggregate_results.py --phase 4 --hf-token $HF_TOKEN
 
     # or with HF_TOKEN in env:
     python scripts/aggregate_results.py
@@ -21,9 +23,20 @@ import os
 import statistics
 from pathlib import Path
 
-EXPERIMENTS = {
-    "sigreg": ["phase4_sigreg_seed0", "phase4_sigreg_seed1"],
-    "ema":    ["phase4_ema_seed0",    "phase4_ema_seed1"],
+PHASE_EXPERIMENTS: dict[int, dict[str, list[str]]] = {
+    4: {
+        "sigreg": ["phase4_sigreg_seed0", "phase4_sigreg_seed1"],
+        "ema":    ["phase4_ema_seed0",    "phase4_ema_seed1"],
+    },
+    5: {
+        "sigreg": ["phase5_sigreg_seed0", "phase5_sigreg_seed1"],
+        "ema":    ["phase5_ema_seed0",    "phase5_ema_seed1"],
+    },
+}
+
+PHASE_TITLES: dict[int, str] = {
+    4: "Phase 4: SIGReg vs EMA — UCF101 (64×64, ViT-Tiny, 25k steps)",
+    5: "Phase 5: SIGReg vs EMA — UCF101 (128×128, ViT-Tiny, 75k steps)",
 }
 
 DEFAULT_REPO = "ankitpani/sigreg-video-lejepa-checkpoints"
@@ -49,10 +62,11 @@ def fetch_results(repo_id: str, experiment_name: str, token: str) -> dict | None
 
 def write_results_md(
     results: dict[str, dict[str, list[float]]],
+    phase: int,
     out_path: Path,
 ) -> None:
     lines = [
-        "# Phase 4 Results: SIGReg vs EMA",
+        f"# Phase {phase} Results: SIGReg vs EMA",
         "",
         "| Mode    | Seeds | Top-1 (mean ± std) | Top-5 (mean ± std) |",
         "|---------|-------|-------------------|-------------------|",
@@ -77,6 +91,7 @@ def write_results_md(
 
 def save_figure(
     results: dict[str, dict[str, list[float]]],
+    phase: int,
     out_path: Path,
 ) -> None:
     try:
@@ -99,7 +114,7 @@ def save_figure(
     ax.set_xticks(x)
     ax.set_xticklabels([m.upper() for m in modes])
     ax.set_ylabel("Top-1 Accuracy (linear probe)")
-    ax.set_title("Phase 4: SIGReg vs EMA — UCF101 (64×64, ViT-Tiny)")
+    ax.set_title(PHASE_TITLES[phase])
     ax.set_ylim(0, max(means) * 1.25 + 0.05 if any(means) else 1.0)
     for bar, val in zip(bars, means):
         ax.text(bar.get_x() + bar.get_width() / 2, bar.get_height() + 0.005,
@@ -111,25 +126,33 @@ def save_figure(
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Aggregate Phase 4 linear probe results")
+    parser = argparse.ArgumentParser(description="Aggregate linear probe results by phase")
     parser.add_argument("--repo-id", default=DEFAULT_REPO, help="HF Hub repo ID")
     parser.add_argument(
         "--hf-token",
         default=os.environ.get("HF_TOKEN") or os.environ.get("HUGGING_FACE_HUB_TOKEN"),
         help="HF Hub token (default: $HF_TOKEN env var)",
     )
+    parser.add_argument(
+        "--phase",
+        type=int,
+        choices=list(PHASE_EXPERIMENTS.keys()),
+        default=5,
+        help="Which phase to aggregate (default: 5)",
+    )
     args = parser.parse_args()
 
     if not args.hf_token:
         parser.error("HF token required: pass --hf-token or set HF_TOKEN env var")
 
+    experiments = PHASE_EXPERIMENTS[args.phase]
     results: dict[str, dict[str, list[float]]] = {
-        mode: {"top1": [], "top5": []} for mode in EXPERIMENTS
+        mode: {"top1": [], "top5": []} for mode in experiments
     }
 
-    for mode, experiments in EXPERIMENTS.items():
+    for mode, exp_names in experiments.items():
         print(f"\n{mode.upper()} mode:")
-        for exp in experiments:
+        for exp in exp_names:
             data = fetch_results(args.repo_id, exp, args.hf_token)
             if data:
                 results[mode]["top1"].append(data["top1"])
@@ -137,8 +160,12 @@ def main() -> None:
                 print(f"  {exp}: top-1={data['top1']:.4f}  top-5={data['top5']:.4f}")
 
     repo_root = Path(__file__).parent.parent
-    write_results_md(results, repo_root / "docs" / "phase4_results.md")
-    save_figure(results, repo_root / "results" / "figures" / "phase4_sigreg_vs_ema.png")
+    write_results_md(results, args.phase, repo_root / "docs" / f"phase{args.phase}_results.md")
+    save_figure(
+        results,
+        args.phase,
+        repo_root / "results" / "figures" / f"phase{args.phase}_sigreg_vs_ema.png",
+    )
 
 
 if __name__ == "__main__":
