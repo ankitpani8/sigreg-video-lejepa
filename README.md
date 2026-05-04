@@ -89,7 +89,7 @@ This project bridges the two: **can SIGReg training extend cleanly from images t
 - [ ] **Phase 6 — Block masking ablation on UCF101** (V-JEPA 2 improved masking applied to the Phase 5 winning method)
 - [ ] **v2.0 — Block masking results** (UCF101 ablation complete)
 - [ ] **Phase 7+ — SSv2 scaling** (deferred until UCF101 results conclusive)
-- [ ] **v3.0 — SSv2 results** (LinkedIn launch)
+- [ ] **v3.0 — SSv2 results** (Industrial Benchmark)
 
 ## Setup
 
@@ -148,4 +148,4 @@ were made for Phase 5 and why.
 
 ## License
 
-@ankitpani8
+MIT
