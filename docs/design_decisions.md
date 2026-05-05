@@ -152,6 +152,42 @@ measure representation quality directly without confounding from fine-tuning tri
 
 ---
 
+## 11. Phase 5b: TPU v5e-8 Support
+
+Phase 5b adds a parallel training path for Kaggle TPU v5e-8 (8 chips, 16GB HBM each).
+The same four Phase 5 experiments can run on either GPU or TPU by changing only config values.
+
+**Why fp16 stays on GPU.**  
+T4 has dedicated fp16 tensor cores; fp16 is measurably faster than bf16 on T4.
+The Phase 4/5 GPU configs keep `precision: 16-mixed` and are not touched.
+
+**Why bf16 is forced on TPU.**  
+Kaggle's v5e-8 chips do not support fp16 at the hardware level. Attempting fp16 raises
+an XLA compilation error. All `*_tpu` configs use `precision: bf16-mixed`.
+
+**`persistent_workers: false` on TPU.**  
+TPU's host-device handoff pattern prefers fresh DataLoader workers between epochs/batches.
+`persistent_workers: true` can cause hangs or stale tensor errors on XLA. GPU configs
+keep `persistent_workers: true` (fast worker reuse) unchanged.
+
+**Strategy.**  
+`strategy: xla` activates Lightning's `XLAStrategy`, which handles DDP-style distribution
+across the 8 TPU chips transparently. `devices: 8` sets the per-node device count.
+`pretrain.py` also injects `strategy: xla` automatically if the user sets `accelerator: tpu`
+without specifying a strategy (safety net for ad-hoc overrides).
+
+**Smoke test strategy.**  
+Two 50-step smoke configs (`phase5_gpu_smoke`, `phase5_tpu_smoke`) use the `smoke_test_tpu`
+minimal model (img_size=64, 256 tubelets, predictor depth=2) to verify each code path
+compiles and produces finite losses before committing to 75k-step runs. Both use synthetic
+data so no UCF101 files are required. Local CPU testing: override `trainer.accelerator=cpu`.
+
+**Expected throughput.**  
+For ViT-Tiny transformer workloads, v5e-8 is expected to deliver ~3–5× the throughput of
+T4×2. The exact speedup depends on XLA compilation and data pipeline efficiency.
+
+---
+
 ## 10. Compute Budget Assumptions
 
 - **GPU**: Kaggle T4 (16GB VRAM), free tier. ~30-40 GPU hours per 75k-step run.
