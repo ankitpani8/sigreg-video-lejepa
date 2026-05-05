@@ -85,8 +85,16 @@ This project bridges the two: **can SIGReg training extend cleanly from images t
   - [x] docs/design_decisions.md — rationale for all Phase 5 choices
   - [ ] 4 training runs on Kaggle
   - [ ] aggregate_results.py --phase 5
-- [ ] **v1.1 — UCF101 results at meaningful scale** (Phase 5 conclusion)
-- [ ] **Phase 6 — Block masking ablation on UCF101** (V-JEPA 2 improved masking applied to the Phase 5 winning method)
+- [ ] **Phase 5b — TPU v5e-8 support** 🚧 in progress
+  - [x] 4 TPU experiment configs: phase5_{sigreg,ema}_seed{0,1}_tpu (bf16-mixed, 8 chips)
+  - [x] smoke_test_tpu model config + phase5_{gpu,tpu}_smoke experiment configs
+  - [x] pretrain.py: XLA strategy guard + is_global_zero log gating
+  - [x] torch_xla optional dep: `uv pip install -e ".[tpu]"`
+  - [x] Notebook: ACCELERATOR variable, conditional torch_xla install, dynamic EXPERIMENT_NAME
+  - [ ] TPU smoke test verified on Kaggle TPU session
+  - [ ] 4 TPU training runs (GPU or TPU — whichever finishes first is the result)
+- [ ] **v1.1 — UCF101 results at meaningful scale** (Phase 5 conclusion; GPU or TPU path)
+- [ ] **Phase 6 — Block masking ablation on UCF101** (V-JEPA 2 improved masking; GPU or TPU)
 - [ ] **v2.0 — Block masking results** (UCF101 ablation complete)
 - [ ] **Phase 7+ — SSv2 scaling** (deferred until UCF101 results conclusive)
 - [ ] **v3.0 — SSv2 results** (Industrial Benchmark)
