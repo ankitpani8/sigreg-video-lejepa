@@ -39,6 +39,7 @@ dev = [
     "jupyter>=1.1.0",
     "ipykernel>=6.29.0",
 ]
+tpu = ["torch_xla[tpu]>=2.8.0"]
 
 [build-system]
 requires = ["hatchling"]
