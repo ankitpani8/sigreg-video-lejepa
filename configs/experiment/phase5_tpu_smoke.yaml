@@ -1,0 +1,20 @@
+# @package _global_
+#
+# Phase 5b TPU smoke — verifies bf16/XLA code path runs end-to-end without errors.
+# Run on Kaggle TPU session: python scripts/pretrain.py +experiment=phase5_tpu_smoke
+defaults:
+  - override /model: smoke_test_tpu
+
+trainer:
+  max_steps: 50
+  accelerator: tpu
+  devices: 8
+  strategy: xla
+  precision: bf16-mixed
+  enable_progress_bar: false
+  logger: false
+
+data:
+  batch_size: 2
+  num_workers: 0
+  persistent_workers: false

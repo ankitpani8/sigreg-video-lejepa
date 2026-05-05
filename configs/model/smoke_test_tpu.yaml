@@ -1,0 +1,38 @@
+# Minimal architecture for TPU code path smoke testing.
+# NOT representative of production Phase 5; production uses ucf101_medium config.
+# img_size=64, num_frames=8 → N = (8/2)*(64/8)*(64/8) = 4*8*8 = 256 tubelets.
+encoder:
+  _target_: sigreg_video_lejepa.models.encoder.VideoViTEncoder
+  model_name: vit_tiny_patch16_224
+  pretrained: false
+  embed_dim: 192
+  img_size: 64
+  num_frames: 8
+  t_patch: 2
+  h_patch: 8
+  w_patch: 8
+
+masker:
+  _target_: sigreg_video_lejepa.data.masking.TubeMasker
+  mask_ratio: 0.75
+
+target_encoder:
+  _target_: sigreg_video_lejepa.models.target_encoder.SharedTargetEncoder
+
+predictor:
+  _target_: sigreg_video_lejepa.models.predictor.VideoJEPAPredictor
+  embed_dim: 192
+  depth: 2
+  num_heads: 2
+
+projector:
+  _target_: sigreg_video_lejepa.models.projector.SIGRegProjector
+  embed_dim: 192
+  hidden_dim: 128
+  proj_dim: 64
+
+sigreg_loss:
+  _target_: sigreg_video_lejepa.training.sigreg_loss.SIGRegLoss
+  num_projections: 256
+  knots: 17
+  t_max: 3.0

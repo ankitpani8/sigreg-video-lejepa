@@ -1,0 +1,15 @@
+# @package _global_
+#
+# Phase 5b GPU smoke — verifies fp16 code path runs end-to-end without errors.
+# Uses TPU-style minimal architecture; GPU smoke is for parity testing only.
+# Local CPU run: python scripts/pretrain.py +experiment=phase5_gpu_smoke trainer.accelerator=cpu
+defaults:
+  - override /model: smoke_test_tpu
+
+trainer:
+  max_steps: 50
+  accelerator: gpu
+  devices: 1
+  precision: 16-mixed
+  enable_progress_bar: false
+  logger: false
