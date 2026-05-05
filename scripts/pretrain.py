@@ -72,7 +72,8 @@ class HFPushCallback(L.Callback):
                             save_checkpoint_to_hf(
                                 step_file, self.repo_id, self.experiment_name, step, self.token
                             )
-                            log.info("Pushed checkpoint step %d to HF Hub: %s", step, step_file.name)
+                            if trainer.is_global_zero:
+                                log.info("Pushed checkpoint step %d to HF Hub: %s", step, step_file.name)
                             self._pushed_files.add(step_file.name)
                         except Exception as exc:
                             log.warning("HF push failed for %s: %s", step_file.name, exc)
@@ -190,6 +191,8 @@ def main(cfg: DictConfig) -> None:
 
     # Build trainer kwargs — handle logger separately so WandbLogger can be injected
     trainer_kwargs = OmegaConf.to_container(cfg.trainer, resolve=True)
+    if trainer_kwargs.get("accelerator") == "tpu" and "strategy" not in trainer_kwargs:
+        trainer_kwargs["strategy"] = "xla"
     raw_logger = trainer_kwargs.pop("logger", True)
 
     if run_name and raw_logger:
@@ -213,15 +216,18 @@ def main(cfg: DictConfig) -> None:
     if cfg.get("resume_from_hf", False) and hf_repo_id and hf_token:
         local_dir = Path("/tmp/hf_resume")
         local_dir.mkdir(parents=True, exist_ok=True)
-        log.info("Resume check: run_name=%r, hf_repo_id=%r, hf_token_set=%s",
-                 run_name, hf_repo_id, hf_token is not None)
+        if trainer.is_global_zero:
+            log.info("Resume check: run_name=%r, hf_repo_id=%r, hf_token_set=%s",
+                     run_name, hf_repo_id, hf_token is not None)
         experiment = run_name or "unnamed"
         found = load_latest_checkpoint_from_hf(hf_repo_id, experiment, hf_token, local_dir)
         if found:
-            log.info("Resuming from HF checkpoint: %s", found)
+            if trainer.is_global_zero:
+                log.info("Resuming from HF checkpoint: %s", found)
             resume_ckpt = str(found)
         else:
-            log.info("No HF checkpoint found — starting from scratch.")
+            if trainer.is_global_zero:
+                log.info("No HF checkpoint found — starting from scratch.")
 
     trainer.fit(module, loader, ckpt_path=resume_ckpt)
 
