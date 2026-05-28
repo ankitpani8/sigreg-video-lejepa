@@ -211,7 +211,11 @@ configs/experiment/ucf101_dryrun.yaml
 - Phase 1: ✅ complete (tubelet embedding, random tube masking)
 - Phase 2: ✅ complete (UCF101 data pipeline — real data, configs, integration test)
 - Phase 3: ✅ complete (linear probe evaluation — FeatureExtractor, LinearProbe, Kaggle notebook)
-- Phase 4: next (UCF101 pretraining run, first run with λ > 0)
+- Phase 4: ✅ complete (UCF101 pretraining run, first run with λ > 0, SigREG vs EMA, 25k steps, 64x64)
+- Phase 5: ✅ complete (UCF101 pretraining run, 75k steps, SigREG vs EMA, 128x128)
+- Phase 5b: ongoing (UCF101 pretraining run, 75k steps, 128x128, TPU configs and architecture added to work after Kaggle's GPU quota is over)
+- Phase 6: architecture ongoing (UCF101 pretraining run, 75k steps, 128x128, GPU+TPU, SigREG vs EMA vs VicREG, causal/temporal masking, Baselines LeWM and VarJEPA and VC-VJR papers)
+
 
 ## Open Questions / Active Decisions
 

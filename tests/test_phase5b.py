@@ -42,24 +42,22 @@ def test_tpu_experiment_configs_load() -> None:
         "phase5_ema_seed0_tpu": 0,
         "phase5_ema_seed1_tpu": 1,
     }
+    ema_exps = {"phase5_ema_seed0_tpu", "phase5_ema_seed1_tpu"}
 
-    for exp, seed in expected.items():
-        with initialize(config_path="../configs", version_base="1.3"):
+    with initialize(config_path="../configs", version_base="1.3"):
+        for exp, seed in expected.items():
             cfg = compose("config", overrides=[f"+experiment={exp}"])
 
-        assert cfg.trainer.precision == "bf16-true", f"{exp}: expected bf16-true"
-        assert cfg.trainer.accelerator == "tpu", f"{exp}: expected tpu"
-        assert cfg.trainer.devices == 8, f"{exp}: expected 8 devices"
-        assert cfg.trainer.strategy == "xla", f"{exp}: expected xla strategy"
-        assert cfg.trainer.max_steps == 75000, f"{exp}: expected 75000 steps"
-        assert cfg.data.persistent_workers is False, f"{exp}: expected persistent_workers=false"
-        assert cfg.seed == seed, f"{exp}: expected seed={seed}, got {cfg.seed}"
+            assert cfg.trainer.precision == "bf16-true", f"{exp}: expected bf16-true"
+            assert cfg.trainer.accelerator == "tpu", f"{exp}: expected tpu"
+            assert cfg.trainer.devices == 8, f"{exp}: expected 8 devices"
+            assert cfg.trainer.strategy == "xla", f"{exp}: expected xla strategy"
+            assert cfg.trainer.max_steps == 75000, f"{exp}: expected 75000 steps"
+            assert cfg.data.persistent_workers is False, f"{exp}: expected persistent_workers=false"
+            assert cfg.seed == seed, f"{exp}: expected seed={seed}, got {cfg.seed}"
 
-    # EMA configs override target_encoder
-    for exp in ("phase5_ema_seed0_tpu", "phase5_ema_seed1_tpu"):
-        with initialize(config_path="../configs", version_base="1.3"):
-            cfg = compose("config", overrides=[f"+experiment={exp}"])
-        assert "EMATargetEncoder" in cfg.model.target_encoder._target_, f"{exp}: expected EMA target"
+            if exp in ema_exps:
+                assert "EMATargetEncoder" in cfg.model.target_encoder._target_, f"{exp}: expected EMA target"
 
 
 def test_gpu_experiment_configs_unchanged() -> None:
@@ -79,10 +77,10 @@ def test_gpu_experiment_configs_unchanged() -> None:
 
     assert gpu_configs, "No GPU experiment configs found — check glob pattern"
 
-    for exp in gpu_configs:
-        with initialize(config_path="../configs", version_base="1.3"):
+    with initialize(config_path="../configs", version_base="1.3"):
+        for exp in gpu_configs:
             cfg = compose("config", overrides=[f"+experiment={exp}"])
-        assert cfg.trainer.precision == "16-mixed", (
-            f"{exp}: expected 16-mixed but got {cfg.trainer.precision} — "
-            "GPU configs must not be changed to bf16"
-        )
+            assert cfg.trainer.precision == "16-mixed", (
+                f"{exp}: expected 16-mixed but got {cfg.trainer.precision} — "
+                "GPU configs must not be changed to bf16"
+            )
