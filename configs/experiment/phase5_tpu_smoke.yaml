@@ -10,7 +10,7 @@ trainer:
   accelerator: tpu
   devices: 8
   strategy: xla
-  precision: bf16-mixed
+  precision: bf16-true
   enable_progress_bar: false
   logger: false
 

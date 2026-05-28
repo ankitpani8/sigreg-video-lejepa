@@ -24,7 +24,7 @@ def test_tpu_smoke_config_loads() -> None:
     with initialize(config_path="../configs", version_base="1.3"):
         cfg = compose("config", overrides=["+experiment=phase5_tpu_smoke"])
 
-    assert cfg.trainer.precision == "bf16-mixed"
+    assert cfg.trainer.precision == "bf16-true"
     assert cfg.trainer.accelerator == "tpu"
     assert cfg.trainer.devices == 8
     assert cfg.trainer.strategy == "xla"
@@ -47,7 +47,7 @@ def test_tpu_experiment_configs_load() -> None:
         with initialize(config_path="../configs", version_base="1.3"):
             cfg = compose("config", overrides=[f"+experiment={exp}"])
 
-        assert cfg.trainer.precision == "bf16-mixed", f"{exp}: expected bf16-mixed"
+        assert cfg.trainer.precision == "bf16-true", f"{exp}: expected bf16-true"
         assert cfg.trainer.accelerator == "tpu", f"{exp}: expected tpu"
         assert cfg.trainer.devices == 8, f"{exp}: expected 8 devices"
         assert cfg.trainer.strategy == "xla", f"{exp}: expected xla strategy"

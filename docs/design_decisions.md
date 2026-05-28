@@ -163,7 +163,7 @@ The Phase 4/5 GPU configs keep `precision: 16-mixed` and are not touched.
 
 **Why bf16 is forced on TPU.**  
 Kaggle's v5e-8 chips do not support fp16 at the hardware level. Attempting fp16 raises
-an XLA compilation error. All `*_tpu` configs use `precision: bf16-mixed`.
+an XLA compilation error. All `*_tpu` configs use `precision: bf16-true` (XLA requires -true variants; bf16-mixed is CUDA-only).
 
 **`persistent_workers: false` on TPU.**  
 TPU's host-device handoff pattern prefers fresh DataLoader workers between epochs/batches.
