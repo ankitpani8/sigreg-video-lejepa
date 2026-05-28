@@ -40,6 +40,13 @@ def build_optimizer_and_scheduler(
             progress = float(step - warmup_steps) / max(1, total_steps - warmup_steps)
             return max(0.0, 0.5 * (1.0 + math.cos(math.pi * progress)))
 
+        # PyTorch >= 2.4 requires 'initial_lr' in param_groups when last_epoch >= 0;
+        # it is set automatically only when last_epoch == -1. Set it explicitly here
+        # so resume (last_epoch = start_step - 1) does not raise KeyError.
+        if last_epoch >= 0:
+            for group in optimizer.param_groups:
+                group.setdefault("initial_lr", group["lr"])
+
         scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, _lr_lambda, last_epoch=last_epoch)
         return optimizer, scheduler
 
