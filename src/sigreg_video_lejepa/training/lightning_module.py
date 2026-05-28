@@ -10,6 +10,42 @@ import torch.nn as nn
 from sigreg_video_lejepa.training.sigreg_loss import SIGRegLoss, sigreg_video_loss
 
 
+def build_optimizer_and_scheduler(
+    module: VideoJEPAModule,
+    lr: float,
+    weight_decay: float,
+    warmup_steps: int,
+    total_steps: int,
+    last_epoch: int = -1,
+) -> tuple[torch.optim.AdamW, torch.optim.lr_scheduler.LambdaLR | None]:
+    """Build AdamW + cosine-warmup LR scheduler for encoder, predictor, and projector.
+
+    Single source of truth for both GPU (Lightning) and TPU (SPMD) training paths.
+    target_encoder and sigreg_loss buffers are intentionally excluded from optimizer.
+
+    Args:
+        last_epoch: pass start_step - 1 when resuming to skip the scheduler.step() loop hack.
+    """
+    params = (
+        list(module.encoder.parameters())
+        + list(module.predictor.parameters())
+        + list(module.projector.parameters())
+    )
+    optimizer = torch.optim.AdamW(params, lr=lr, weight_decay=weight_decay)
+
+    if total_steps > 0:
+        def _lr_lambda(step: int) -> float:
+            if step < warmup_steps:
+                return float(step) / max(1, warmup_steps)
+            progress = float(step - warmup_steps) / max(1, total_steps - warmup_steps)
+            return max(0.0, 0.5 * (1.0 + math.cos(math.pi * progress)))
+
+        scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, _lr_lambda, last_epoch=last_epoch)
+        return optimizer, scheduler
+
+    return optimizer, None
+
+
 class VideoJEPAModule(L.LightningModule):
     """Lightning module wiring encoder, target encoder, predictor, projector, and losses.
 
@@ -47,8 +83,14 @@ class VideoJEPAModule(L.LightningModule):
         self.sigreg_loss = sigreg_loss
         self.masker = masker
 
-    def training_step(self, batch: tuple, batch_idx: int) -> torch.Tensor:
-        x, _ = batch                                        # (B, C, T, H, W)
+    def _forward_representations(
+        self, x: torch.Tensor
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        """Encode x and produce (pred, tgt_slice, proj) without computing the loss.
+
+        Separated from compute_loss so pretrain_tpu.py can all-gather proj across
+        SPMD cores before calling SIGRegLoss on the full global batch.
+        """
         B = x.size(0)
 
         if self.masker is not None:
@@ -66,10 +108,16 @@ class VideoJEPAModule(L.LightningModule):
         mask_tokens = self.predictor.mask_token.expand(B, N_tgt, -1)
         pred = self.predictor(ctx, mask_tokens)             # (B, N_tgt, D)
         proj = self.projector(ctx)                          # (B, N_ctx, proj_dim)
+        return pred, tgt_slice, proj
 
-        total, l_pred, l_sigreg = sigreg_video_loss(
-            pred, tgt_slice, proj, self.sigreg_loss, self.hparams.lam
-        )
+    def compute_loss(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        """Full forward + loss for the GPU Lightning path. Returns (total, l_pred, l_sigreg)."""
+        pred, tgt_slice, proj = self._forward_representations(x)
+        return sigreg_video_loss(pred, tgt_slice, proj, self.sigreg_loss, self.hparams.lam)
+
+    def training_step(self, batch: tuple, batch_idx: int) -> torch.Tensor:
+        x, _ = batch
+        total, l_pred, l_sigreg = self.compute_loss(x)
         self.log_dict(
             {"train/loss": total, "train/l_pred": l_pred, "train/l_sigreg": l_sigreg},
             on_step=True,
@@ -82,27 +130,14 @@ class VideoJEPAModule(L.LightningModule):
             self.target_encoder.update(self.encoder, self.hparams.ema_decay)
 
     def configure_optimizers(self):
-        params = (
-            list(self.encoder.parameters())
-            + list(self.predictor.parameters())
-            + list(self.projector.parameters())
-        )
-        optimizer = torch.optim.AdamW(
-            params,
+        optimizer, scheduler = build_optimizer_and_scheduler(
+            self,
             lr=self.hparams.lr,
             weight_decay=self.hparams.weight_decay,
+            warmup_steps=self.hparams.warmup_steps,
+            total_steps=self.hparams.total_steps,
         )
-        if self.hparams.total_steps > 0:
-            warmup = self.hparams.warmup_steps
-            total = self.hparams.total_steps
-
-            def _lr_lambda(step: int) -> float:
-                if step < warmup:
-                    return float(step) / max(1, warmup)
-                progress = float(step - warmup) / max(1, total - warmup)
-                return max(0.0, 0.5 * (1.0 + math.cos(math.pi * progress)))
-
-            scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, _lr_lambda)
+        if scheduler is not None:
             return {
                 "optimizer": optimizer,
                 "lr_scheduler": {"scheduler": scheduler, "interval": "step", "frequency": 1},
