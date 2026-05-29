@@ -192,3 +192,25 @@ def test_phase5c_config_composition() -> None:
             assert cfg.data.batch_size == 64, (
                 f"{exp}: expected batch_size=64 (SPMD global batch), got {cfg.data.batch_size}"
             )
+
+def test_smoke_data_model_shape_alignment():
+    """Synthetic-data smoke configs must match their model's tubelet count."""
+    from hydra import compose, initialize
+    for exp in ['phase5_tpu_smoke', 'phase5_gpu_smoke']:
+        with initialize(config_path='../configs', version_base='1.3'):
+            cfg = compose('config', overrides=[f'+experiment={exp}'])
+        enc = cfg.model.encoder
+        ds = cfg.data.dataset
+        model_tubelets = (
+            (enc.num_frames // enc.t_patch)
+            * (enc.img_size // enc.h_patch)
+            * (enc.img_size // enc.w_patch)
+        )
+        data_tubelets = (
+            (ds.num_frames // enc.t_patch)
+            * (ds.height // enc.h_patch)
+            * (ds.width // enc.w_patch)
+        )
+        assert model_tubelets == data_tubelets, (
+            f"{exp}: model expects {model_tubelets} tubelets but data produces {data_tubelets}"
+        )
