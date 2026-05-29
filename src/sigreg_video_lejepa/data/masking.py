@@ -33,7 +33,8 @@ class TubeMasker:
             raise ValueError(
                 f"mask_ratio={self.mask_ratio} leaves no context tokens for {num_tubelets} tubes"
             )
-        perm = torch.randperm(num_tubelets, device=device)
+        scores = torch.rand(num_tubelets, device=device)
+        perm = torch.argsort(scores).to(torch.int32)
         tgt_idx = perm[:num_tgt].sort().values
         ctx_idx = perm[num_tgt:].sort().values
         return ctx_idx, tgt_idx
