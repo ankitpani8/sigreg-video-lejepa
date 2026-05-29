@@ -20,10 +20,11 @@ has a working dual-accelerator pipeline (Lightning for GPU, SPMD for TPU).
 **Pending**: `phase5_ema_seed0` needs its final 5,250 steps on GPU (currently at
 69,750/75,000 due to a quota interruption); a quick resume run completes it.
 
-**Next milestone**: Phase 6 — three-way regularizer comparison (SIGReg vs EMA vs VICReg)
-on a fixed causal/stochastic-prediction testbed. This is the project's novel contribution
-in the unfilled gap between LeWM (SIGReg, no EMA comparison on video), VJ-VCR (VICReg
-only, no SIGReg, CNN-based), and Var-JEPA (SIGReg + KL, tabular not video).
+**Phase 6 in progress (design locked).** Three-way regularizer comparison (SIGReg vs EMA
+vs VICReg-VC) on a fixed causal+stochastic-prediction testbed. CausalTubeMasker,
+StochasticVideoJEPAPredictor, and VICRegLoss implemented; all tests pass (16 new Phase 6
+tests + all existing Phase 4/5 tests); smoke configs verified on CPU. Training infrastructure
+ready for Kaggle GPU/TPU sessions.
 
 ### Phase 5 Results
 
@@ -97,9 +98,15 @@ This project bridges the two: **can SIGReg training extend cleanly from images t
   - [x] SIGReg numerical equivalence verified (TPU within 0.3% of CPU reference)
 - [ ] **v1.1** — UCF101 results at meaningful scale (Phase 5 completion + seed1 replication)
 - [ ] **Phase 6** — Regularizer comparison on causal/stochastic-prediction testbed 🚧
-  - Fixed testbed: causal masking + stochastic predictor (used as tool, not claimed contribution)
-  - Variable: regularizer (SIGReg vs EMA vs VICReg)
-  - Eval: linear probe + effective-rank diagnostic
+  - [x] CausalTubeMasker: C=6/G=4/T=6 deterministic mask, TPU-safe (int32 precomputed)
+  - [x] StochasticVideoJEPAPredictor: Gaussian (mu, log_var), per-dim free-bits KL
+  - [x] VICRegLoss: variance + covariance (VC-only; JEPA pred loss serves as invariance)
+  - [x] VideoJEPAModule extended: predictor_type / regularizer_type / beta hparams
+  - [x] pretrain_tpu.py: stochastic branch + VICReg all-gather (same pattern as SIGReg)
+  - [x] 14 experiment configs (GPU + TPU × 3 regularizers × 2 seeds + 2 smoke)
+  - [x] 16 new tests; all Phase 4/5 paths verified unchanged
+  - [ ] phase6_{sigreg,ema,vicreg}_seed{0,1} training runs on Kaggle GPU (next sessions)
+  - [ ] Linear probe + effective-rank diagnostic on Phase 6 representations
 - [ ] **v2.0** — Phase 6 results (regularizer paper, workshop / arXiv preprint target)
 - [ ] **Phase 7+** — SSv2 scaling (deferred until UCF101 results conclusive)
 - [ ] **v3.0** — SSv2 results
