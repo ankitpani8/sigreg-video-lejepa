@@ -33,6 +33,7 @@ Ankit Pani (ankitpani8 on GitHub). 6+ years data science / analytics consulting.
 - **Experiment tracking**: Weights & Biases (wandb)
 - **Linting**: ruff (line length 100; E501/N806/N812 ignored)
 - **Testing**: pytest
+- **TPU (optional)**: torch_xla 2.8+ via SPMD harness
 
 ## Commands
 
@@ -154,9 +155,13 @@ configs/experiment/ucf101_dryrun.yaml
 ## Compute
 
 - **Local laptop**: Dell Vostro 3525, AMD Ryzen 5 5625U, 8GB RAM, integrated graphics. **Editing/git only — never train here.**
-- **Pretraining**: Google Colab Pro. Free tier T4 for prototyping; A100/V100 when available.
+- **Pretraining**: 
+  - Google Colab Pro. Free tier T4 for prototyping; A100/V100 when available.
+  - Kaggle TPU v5e-8 (free tier, 20 hrs/week) — SPMD path via scripts/pretrain_tpu.py
+  
 - **Evaluation (Phase 3+)**: Kaggle (UCF101 is a built-in Kaggle dataset; T4 × 2 free). Notebook: `notebooks/02_kaggle_linprobe.ipynb`.
 - **Storage**: Google Drive Premium (5TB). Mounts in Colab as `/content/drive/MyDrive/`.
+
 
 ## Key References
 
@@ -207,14 +212,15 @@ configs/experiment/ucf101_dryrun.yaml
 
 ## Phase Status
 
-- Phase 0: ✅ complete (synthetic data, end-to-end pipeline)
-- Phase 1: ✅ complete (tubelet embedding, random tube masking)
-- Phase 2: ✅ complete (UCF101 data pipeline — real data, configs, integration test)
-- Phase 3: ✅ complete (linear probe evaluation — FeatureExtractor, LinearProbe, Kaggle notebook)
-- Phase 4: ✅ complete (UCF101 pretraining run, first run with λ > 0, SigREG vs EMA, 25k steps, 64x64)
-- Phase 5: ✅ complete (UCF101 pretraining run, 75k steps, SigREG vs EMA, 128x128)
-- Phase 5b: ongoing (UCF101 pretraining run, 75k steps, 128x128, TPU configs and architecture added to work after Kaggle's GPU quota is over)
-- Phase 6: architecture ongoing (UCF101 pretraining run, 75k steps, 128x128, GPU+TPU, SigREG vs EMA vs VicREG, causal/temporal masking, Baselines LeWM and VarJEPA and VC-VJR papers)
+- Phase 0: ✅ complete
+- Phase 1: ✅ complete
+- Phase 2: ✅ complete
+- Phase 3: ✅ complete
+- Phase 4: ✅ complete (SIGReg 3.44% / EMA 4.23% top-1, weak result, pipeline validated)
+- Phase 5: ✅ complete (SIGReg 5.87% / EMA 4.04% top-1; KEY FINDING: effective rank 42.7 vs 4.2 — SIGReg's anti-collapse advantage demonstrated on video)
+- Phase 5b: DEPRECATED — Lightning XLAStrategy incompatible with Kaggle TPU single-process topology
+- Phase 5c: ✅ complete (SPMD TPU pipeline validated on Kaggle v5e-8, SIGReg numerics match CPU within 0.3%)
+- Phase 6: planning (regularizer comparison on causal/stochastic-prediction testbed: SIGReg vs EMA vs VICReg)
 
 
 ## Open Questions / Active Decisions
@@ -223,7 +229,8 @@ configs/experiment/ucf101_dryrun.yaml
 
 - [x] Backbone size for UCF101 prototype: **ViT-Tiny** (embed_dim=192, resolved in Phase 2)
 - [x] Frame sampling rate for UCF101: **16 frames at ~4 fps** (stride=6, resolved in Phase 2)
-- [ ] SIGReg lambda schedule: constant or warmup? (defer to Phase 4)
+- [x] SIGReg lambda schedule: constant or warmup? (defer to Phase 4)
+- [ ] Phase 6 regularizer comparison design: causal masking exact spec, stochastic predictor KL bound β, VICReg implementation — see docs/design_decisions.md when Phase 6 plan finalizes
 
 ## Key Design Decisions (Phase 2)
 

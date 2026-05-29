@@ -275,3 +275,114 @@ constructing the scheduler.
 - **Batch size fallback**: If batch_size=32 causes OOM at 128×128 (possible with
   longer sequences), drop to 16. The SIGReg EP statistic is less reliable at smaller
   batch sizes but the paper shows it is usable down to N≈32.
+
+## 11. Phase 5b: TPU v5e-8 Support — DEPRECATED
+
+Phase 5b attempted to use Lightning's `XLAStrategy` with `xmp.spawn` to launch
+8 processes (one per TPU core) on Kaggle's TPU v5e-8. This approach fails on
+Kaggle: the TPU VM exposes all 8 cores in a single process, and `xmp.spawn` cannot
+establish 8 worker addresses from inside the notebook environment. Error:
+`Expected 8 worker addresses, got 1` (Lightning issue #20244, open since Sept 2024).
+
+The Phase 5b configs (`phase5_*_tpu.yaml` with `accelerator: tpu, strategy: xla`)
+and the `bf16-true` precision fix are retained in the repository as historical
+record. They are NOT functional on Kaggle TPU. Use the Phase 5c SPMD path
+(Section 12) instead.
+
+A secondary issue (also fixed in Phase 5b's history) was that `bf16-mixed`
+precision is rejected by XLAPrecision in Lightning — XLA requires `bf16-true`
+since `-mixed` variants are CUDA-only. This fix carries forward into Phase 5c.
+
+## 12. Phase 5c: SPMD Training Path
+
+Phase 5c replaces the failed Lightning XLAStrategy approach (Phase 5b) with a
+standalone SPMD harness (`scripts/pretrain_tpu.py`) that runs on Kaggle TPU v5e-8
+end-to-end. The GPU Lightning path (`scripts/pretrain.py`) is completely unchanged.
+
+**Why SPMD, not Lightning XLAStrategy.**
+Per torch_xla documentation: "Under SPMD mode, there is always a single process per
+host. Multi-processing is not compatible with SPMD." Kaggle's TPU v5e-8 exposes all
+8 chips inside a single Python process — the SPMD topology. Lightning's
+`xmp.spawn`-based launcher tries to fork 8 processes, which cannot coexist with
+the single-process device topology. SPMD is the architecturally correct abstraction
+for this hardware: one Python interpreter, one logical program, XLA handles cross-core
+distribution.
+
+**Two-harness tradeoff.**
+GPU keeps Lightning (`pretrain.py`): mature, callback ecosystem, handles checkpointing
+and DDP. TPU gets a thin custom loop (`pretrain_tpu.py`, ~250 lines). Both scripts
+share model code, loss functions, the `compute_loss` method on `VideoJEPAModule`, and
+the `build_optimizer_and_scheduler` helper. The two-harness split is the cost of
+working around Lightning's Kaggle-TPU incompatibility, but the GPU path's behavior
+and tests are untouched.
+
+**SPMD topology and batch sharding.**
+Device mesh: `(8, 1)` with axes `('data', 'model')`. Input batch `(B, C, T, H, W)` is
+sharded on the `'data'` axis — each of the 8 cores processes `B/8` samples. Model
+parameters are replicated across all cores. Gradients are all-reduced by XLA during
+backward automatically.
+
+**Precision: bf16 forward, fp32 SIGReg.**
+Encoder and predictor forward passes run in `torch.autocast('xla', dtype=torch.bfloat16)`.
+The SIGReg Epps-Pulley CF test runs in fp32: `proj` embeddings are cast to fp32 before
+the loss call. The CF test evaluates `cos(x·t)` and `sin(x·t)` at scaled values; in bf16
+the low-precision trigonometric accumulation NaNs the statistic. MSE prediction loss
+stays in bf16. `XLA_USE_BF16` env var (deprecated in 2.8) is NOT used.
+
+**SIGReg global-batch all-gather (CRITICAL).**
+Under SPMD data sharding, each core holds `batch_size / 8` samples of `proj`. The
+Epps-Pulley test is a distributional statistic over the batch; running it per-shard
+would compute 8 independent EP tests on 1/8-scale batches, producing a biased
+statistic. Before calling `SIGRegLoss.forward()`, the SPMD harness re-annotates
+`proj_fp32` as fully replicated, inserting an XLA all-gather. The EP test runs once
+on the assembled global batch. Verified empirically: TPU SIGReg = 204.752 vs CPU
+SIGReg = 205.238 on the same fixed batch (0.24% difference, within bf16-vs-fp32
+tolerance). If the all-gather were absent, TPU would have shown ~25 (= 205/8).
+
+**SIGReg batch-size relationship between GPU and TPU runs (honest framing).**
+- GPU DDP (T4×2): `batch_size=32` per rank. Each rank computes SIGReg's EP statistic
+  on its local 32-sample batch. DDP averages the SIGReg gradient across ranks.
+  Effectively: SIGReg statistic computed over **32 samples** (per-rank), gradients
+  averaged.
+- TPU SPMD: `batch_size=64` global. SIGReg statistic computed once over all **64
+  samples** after all-gather, then a single backward.
+
+These are **different statistics over different sample sizes**, not the same statistic
+computed differently. Both are valid EP tests. The TPU EP test has more samples and is
+therefore lower-variance, but the two paths are not exact numerical replicates and
+should not be reported as such. For *internal* Phase 6 comparisons (all arms on the
+same accelerator), this is irrelevant — all arms use the same statistic. For
+cross-accelerator comparison (e.g., Phase 5 GPU vs a hypothetical Phase 5 TPU rerun),
+the GPU number is complementary, not a strict replicate.
+
+**TPU-safe random number generation.**
+TPU v5e does not support 64-bit integer types. `torch.randperm` produces int64 RNG
+ops that XLA cannot rewrite to int32. The masker (`data/masking.py`) uses
+`torch.argsort(torch.rand(N))` instead — uniformly random permutation via float32
+RNG (TPU-native) and argsort, with explicit `.to(torch.int32)` on the indices. This
+change is drop-in equivalent on GPU (same distribution, identical statistical
+properties) and unblocks TPU execution.
+
+**Smoke configs must align data shape with model.**
+The `phase5_tpu_smoke` and `phase5_gpu_smoke` configs override both `model` (to
+`smoke_test_tpu`, 64×64×8) and `data.dataset` shape (`num_frames=8, height=64,
+width=64`) so the synthetic dataset produces tensors matching the model's
+expected tubelet count. A regression test
+(`test_smoke_data_model_shape_alignment`) enforces this for any future smoke
+configs.
+
+**Checkpoint format interoperability.**
+Both harnesses save `{"state_dict": module.state_dict(), "global_step": N}` with
+identical `encoder.*` key prefixes. `extract_features.py` loads either format without
+modification. Same `step_{step:07d}.ckpt` filename convention; same HF Hub path
+structure.
+
+**EMA update placement.**
+In the SPMD loop, `target_encoder.update()` is called before `torch_xla.sync()` so the
+EMA weight update is traced in the same XLA graph as the optimizer step. Placing it
+after `sync()` would defer it to the next step's graph and create a one-step lag.
+
+**Scheduler resume.**
+LR scheduler constructed with `last_epoch=start_step-1` on resume. PyTorch ≥2.4 requires
+`initial_lr` in optimizer param groups when `last_epoch ≥ 0`;
+`build_optimizer_and_scheduler` sets this explicitly.
