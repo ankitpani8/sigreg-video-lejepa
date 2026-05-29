@@ -66,15 +66,18 @@ def test_compute_loss_cpu() -> None:
     # smoke_test_tpu: img_size=64, num_frames=8, channels=3
     x = torch.randn(4, 3, 8, 64, 64)
 
-    pred, tgt_slice, proj = module._forward_representations(x)
+    pred, tgt_slice, proj, pred_aux = module._forward_representations(x)
     assert pred.shape[0] == 4
-    assert pred.ndim == 3  # (B, N_tgt, D)
-    assert proj.ndim == 3  # (B, N_ctx, proj_dim)
+    assert pred.ndim == 3   # (B, N_tgt, D)
+    assert proj.ndim == 3   # (B, N_ctx, proj_dim)
+    assert pred_aux is None  # deterministic predictor has no aux dict
 
-    total, l_pred, l_sigreg = module.compute_loss(x)
+    total, l_pred, l_kl, l_reg = module.compute_loss(x)
     assert total.ndim == 0 and torch.isfinite(total)
     assert l_pred.ndim == 0 and torch.isfinite(l_pred)
-    assert l_sigreg.ndim == 0 and torch.isfinite(l_sigreg)
+    assert l_kl.item() == 0.0, "deterministic Phase 5 module must have zero KL"
+    assert l_reg.ndim == 0 and torch.isfinite(l_reg)
+    assert all(torch.isfinite(t) for t in (total, l_pred, l_kl, l_reg))
 
 
 def test_build_optimizer_and_scheduler() -> None:

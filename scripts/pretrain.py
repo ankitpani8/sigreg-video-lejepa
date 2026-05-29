@@ -137,6 +137,8 @@ def main(cfg: DictConfig) -> None:
     sigreg_loss = instantiate(cfg.model.sigreg_loss)
     masker_cfg = cfg.model.get("masker")
     masker = instantiate(masker_cfg) if masker_cfg is not None else None
+    vicreg_loss_cfg = cfg.model.get("vicreg_loss")
+    vicreg_loss = instantiate(vicreg_loss_cfg) if vicreg_loss_cfg is not None else None
 
     total_steps = cfg.trainer.get("max_steps") or 0
     module = VideoJEPAModule(
@@ -145,6 +147,7 @@ def main(cfg: DictConfig) -> None:
         predictor=predictor,
         projector=projector,
         sigreg_loss=sigreg_loss,
+        vicreg_loss=vicreg_loss,
         masker=masker,
         total_steps=total_steps,
         **OmegaConf.to_container(cfg.training, resolve=True),
