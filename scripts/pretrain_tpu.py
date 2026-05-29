@@ -42,6 +42,7 @@ from torch.utils.data import DataLoader  # noqa: E402
 
 from sigreg_video_lejepa.training.lightning_module import (  # noqa: E402
     VideoJEPAModule,
+    _kl_loss,
     build_optimizer_and_scheduler,
 )
 from sigreg_video_lejepa.utils.checkpointing import (  # noqa: E402
@@ -142,6 +143,8 @@ def main(cfg: DictConfig) -> None:
     sigreg_loss = instantiate(cfg.model.sigreg_loss)
     masker_cfg = cfg.model.get("masker")
     masker = instantiate(masker_cfg) if masker_cfg is not None else None
+    vicreg_loss_cfg = cfg.model.get("vicreg_loss")
+    vicreg_loss = instantiate(vicreg_loss_cfg) if vicreg_loss_cfg is not None else None
 
     module = VideoJEPAModule(
         encoder=encoder,
@@ -149,6 +152,7 @@ def main(cfg: DictConfig) -> None:
         predictor=predictor,
         projector=projector,
         sigreg_loss=sigreg_loss,
+        vicreg_loss=vicreg_loss,
         masker=masker,
         total_steps=max_steps,
         **OmegaConf.to_container(cfg.training, resolve=True),
@@ -231,29 +235,48 @@ def main(cfg: DictConfig) -> None:
 
             optimizer.zero_grad()
 
-            # CRITICAL 2: encoder/predictor forward in bf16; SIGReg in fp32.
-            # The Epps-Pulley CF test is numerically unstable in bf16 (trig of
-            # large scaled values accumulates error). MSE loss is bf16-stable.
+            # CRITICAL 2: encoder/predictor forward in bf16; regularizer stats in fp32.
+            # The Epps-Pulley CF test and VICReg variance/covariance are numerically
+            # unstable in bf16. Smooth-L1 / MSE prediction loss is bf16-stable.
             with torch.autocast("xla", dtype=torch.bfloat16):
-                pred, tgt_slice, proj = module._forward_representations(x)
-                l_pred = torch.nn.functional.mse_loss(pred, tgt_slice)
+                pred, tgt_slice, proj, pred_aux = module._forward_representations(x)
+                if module.hparams.predictor_type == "stochastic":
+                    l_pred = torch.nn.functional.smooth_l1_loss(pred, tgt_slice)
+                else:
+                    l_pred = torch.nn.functional.mse_loss(pred, tgt_slice)
 
-            # CRITICAL 1: all-gather proj so SIGReg sees the full global batch.
-            # Without this, each core runs EP on batch_size/num_devices samples —
-            # a weaker, biased statistic that diverges from the GPU baseline.
-            proj_fp32 = proj.to(torch.float32)
-            proj_global = _all_gather_proj(proj_fp32, mesh, num_devices)
-            l_sigreg = module.sigreg_loss(proj_global)
+            # KL term (zero for deterministic; pred_aux has fp32 mu/log_var)
+            if module.hparams.predictor_type == "stochastic":
+                l_kl = _kl_loss(pred_aux["mu"].float(), pred_aux["log_var"].float())
+            else:
+                l_kl = torch.zeros((), device=device)
 
+            # CRITICAL 1: all-gather proj so SIGReg / VICReg sees the full global batch.
+            # Both are full-batch distributional statistics; per-shard computation
+            # produces biased estimates that diverge from the GPU baseline.
+            regularizer_type = module.hparams.regularizer_type
             lam = module.hparams.lam
-            total_loss = (1.0 - lam) * l_pred + lam * l_sigreg
+            if regularizer_type in ("sigreg", "vicreg"):
+                proj_fp32 = proj.to(torch.float32)
+                proj_global = _all_gather_proj(proj_fp32, mesh, num_devices)
+                if regularizer_type == "sigreg":
+                    l_reg = module.sigreg_loss(proj_global)
+                else:
+                    l_reg = module.vicreg_loss(proj_global)
+            else:  # "ema"
+                l_reg = torch.zeros((), device=device)
+
+            if module.hparams.predictor_type == "stochastic":
+                total_loss = l_pred + module.hparams.beta * l_kl + lam * l_reg
+            else:
+                total_loss = (1.0 - lam) * l_pred + lam * l_reg
 
             total_loss.backward()
             optimizer.step()
             if scheduler is not None:
                 scheduler.step()
 
-            # MINOR 6: EMA update before sync so it is traced in the same XLA graph.
+            # EMA update before sync so it is traced in the same XLA graph.
             if module.hparams.ema_decay is not None:
                 module.target_encoder.update(module.encoder, module.hparams.ema_decay)
 
@@ -264,11 +287,12 @@ def main(cfg: DictConfig) -> None:
             if step % log_every == 0:
                 lr_now = optimizer.param_groups[0]["lr"]
                 log.info(
-                    "step=%d  loss=%.4f  l_pred=%.4f  l_sigreg=%.4f  lr=%.2e",
+                    "step=%d  loss=%.4f  l_pred=%.4f  l_kl=%.4f  l_reg=%.4f  lr=%.2e",
                     step,
                     total_loss.item(),
                     l_pred.item(),
-                    l_sigreg.item(),
+                    l_kl.item(),
+                    l_reg.item(),
                     lr_now,
                 )
                 if wandb_run is not None:
@@ -276,7 +300,8 @@ def main(cfg: DictConfig) -> None:
                         {
                             "train/loss": total_loss.item(),
                             "train/l_pred": l_pred.item(),
-                            "train/l_sigreg": l_sigreg.item(),
+                            "train/l_kl": l_kl.item(),
+                            "train/l_reg": l_reg.item(),
                             "train/lr": lr_now,
                             "global_step": step,
                         },
