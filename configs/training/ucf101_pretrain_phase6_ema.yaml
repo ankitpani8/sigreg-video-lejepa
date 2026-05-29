@@ -1,0 +1,10 @@
+# Phase 6 — EMA arm training config.
+# Stochastic predictor + causal masking + EMA target encoder (no regularizer loss term).
+predictor_type: stochastic
+regularizer_type: ema
+lam: 0.0
+beta: 0.001
+ema_decay: 0.996
+lr: 3.0e-4
+weight_decay: 0.05
+warmup_steps: 3750  # 5% of 75000

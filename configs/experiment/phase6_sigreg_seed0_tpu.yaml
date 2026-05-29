@@ -1,0 +1,20 @@
+# @package _global_
+#
+# Phase 6 — SIGReg arm, seed 0 (Kaggle TPU v5e-8 / SPMD).
+# Run via: python scripts/pretrain_tpu.py +experiment=phase6_sigreg_seed0_tpu
+defaults:
+  - override /data: ucf101_medium
+  - override /model: ucf101_medium_phase6
+  - override /training: ucf101_pretrain_phase6_sigreg
+
+seed: 0
+
+trainer:
+  max_steps: 75000
+  accelerator: tpu
+  devices: 8
+
+data:
+  batch_size: 64   # global batch; 8/core × 8 cores
+  num_workers: 4
+  persistent_workers: false   # TPU host-device handoff prefers fresh workers

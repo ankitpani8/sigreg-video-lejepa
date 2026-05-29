@@ -1,0 +1,23 @@
+# @package _global_
+#
+# Phase 6 TPU smoke — verifies SPMD bf16 code path runs end-to-end.
+# Uses Phase 6 minimal architecture (causal masker + stochastic predictor, 8-frame).
+# Tests SIGReg arm (exercises all-gather path).
+# Local CPU run: python scripts/pretrain_tpu.py +experiment=phase6_tpu_smoke
+defaults:
+  - override /model: smoke_test_phase6
+  - override /training: ucf101_pretrain_phase6_sigreg
+
+trainer:
+  max_steps: 50
+  accelerator: tpu
+  devices: 8
+
+data:
+  batch_size: 8   # global batch; 1/core × 8 cores minimum
+  num_workers: 0
+  persistent_workers: false
+  dataset:
+    num_frames: 8
+    height: 64
+    width: 64

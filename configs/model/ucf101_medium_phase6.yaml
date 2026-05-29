@@ -1,0 +1,57 @@
+# Model config for ucf101_medium Phase 6 (128×128, 16 frames, ViT-Tiny).
+#
+# Identical to ucf101_medium except:
+#   - masker: CausalTubeMasker (C=6, G=4, T=6 frames; 3/2/3 temporal positions)
+#     → ctx_idx: 768 tubelets [tpos 0,1,2], tgt_idx: 768 tubelets [tpos 5,6,7]
+#     → gap: 512 tubelets [tpos 3,4] excluded from both ctx and tgt
+#   - predictor: StochasticVideoJEPAPredictor (Gaussian reparameterization)
+#   - vicreg_loss: added for VICReg arm (unused by sigreg/ema arms but harmless)
+#
+# Tubelet geometry: 2×8×8 at 128×128 → N = (16/2)×(128/8)×(128/8) = 2,048 tubelets.
+# tubelets_per_tpos = (128/8)×(128/8) = 256.
+
+encoder:
+  _target_: sigreg_video_lejepa.models.encoder.VideoViTEncoder
+  model_name: vit_tiny_patch16_224
+  pretrained: false
+  embed_dim: 192
+  img_size: 128
+  num_frames: 16
+  t_patch: 2
+  h_patch: 8
+  w_patch: 8
+
+masker:
+  _target_: sigreg_video_lejepa.data.causal_masking.CausalTubeMasker
+  context_frames: 6
+  gap_frames: 4
+  target_frames: 6
+  t_patch: 2
+  tubelets_per_tpos: 256   # (128/8) × (128/8)
+
+target_encoder:
+  _target_: sigreg_video_lejepa.models.target_encoder.SharedTargetEncoder
+
+predictor:
+  _target_: sigreg_video_lejepa.models.stochastic_predictor.StochasticVideoJEPAPredictor
+  embed_dim: 192
+  depth: 12
+  num_heads: 6
+
+projector:
+  _target_: sigreg_video_lejepa.models.projector.SIGRegProjector
+  embed_dim: 192
+  hidden_dim: 2048
+  proj_dim: 128
+
+sigreg_loss:
+  _target_: sigreg_video_lejepa.training.sigreg_loss.SIGRegLoss
+  num_projections: 256
+  knots: 17
+  t_max: 3.0
+
+vicreg_loss:
+  _target_: sigreg_video_lejepa.training.vicreg_loss.VICRegLoss
+  gamma: 1.0
+  mu_v: 25.0
+  mu_c: 1.0

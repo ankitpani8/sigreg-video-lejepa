@@ -1,0 +1,25 @@
+# @package _global_
+#
+# Phase 6 — EMA arm, seed 1 (GPU / Lightning).
+defaults:
+  - override /data: ucf101_medium
+  - override /model: ucf101_medium_phase6
+  - override /training: ucf101_pretrain_phase6_ema
+
+seed: 1
+
+model:
+  target_encoder:
+    _target_: sigreg_video_lejepa.models.target_encoder.EMATargetEncoder
+
+trainer:
+  max_steps: 75000
+  accelerator: auto
+  precision: 16-mixed
+  enable_progress_bar: true
+  logger: true
+
+data:
+  batch_size: 32
+  num_workers: 4
+  persistent_workers: true

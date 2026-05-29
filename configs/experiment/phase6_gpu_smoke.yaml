@@ -1,0 +1,26 @@
+# @package _global_
+#
+# Phase 6 GPU smoke — verifies fp16 GPU code path runs end-to-end.
+# Uses Phase 6 minimal architecture (causal masker + stochastic predictor, 8-frame).
+# Tests SIGReg arm (most complex path).
+# Local CPU run: python scripts/pretrain.py +experiment=phase6_gpu_smoke trainer.accelerator=cpu
+defaults:
+  - override /model: smoke_test_phase6
+  - override /training: ucf101_pretrain_phase6_sigreg
+
+trainer:
+  max_steps: 50
+  accelerator: gpu
+  devices: 1
+  precision: 16-mixed
+  enable_progress_bar: false
+  logger: false
+
+data:
+  batch_size: 8
+  num_workers: 0
+  persistent_workers: false
+  dataset:
+    num_frames: 8
+    height: 64
+    width: 64

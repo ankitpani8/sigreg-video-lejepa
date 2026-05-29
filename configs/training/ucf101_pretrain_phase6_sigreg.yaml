@@ -1,0 +1,11 @@
+# Phase 6 — SIGReg arm training config.
+# Stochastic predictor + causal masking + SIGReg regularizer.
+# Hyperparameters identical to Phase 5 SIGReg except predictor_type and beta.
+predictor_type: stochastic
+regularizer_type: sigreg
+lam: 0.02
+beta: 0.001
+ema_decay: null
+lr: 3.0e-4
+weight_decay: 0.05
+warmup_steps: 3750  # 5% of 75000

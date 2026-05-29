@@ -1,0 +1,12 @@
+# Phase 6 — VICReg arm training config.
+# Stochastic predictor + causal masking + VICReg-VC regularizer (no invariance term;
+# the JEPA prediction loss serves that role architecturally).
+# lam=1.0: VICReg loss is already internally weighted (mu_v=25, mu_c=1 in model config).
+predictor_type: stochastic
+regularizer_type: vicreg
+lam: 1.0
+beta: 0.001
+ema_decay: null
+lr: 3.0e-4
+weight_decay: 0.05
+warmup_steps: 3750  # 5% of 75000

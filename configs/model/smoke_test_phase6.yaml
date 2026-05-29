@@ -1,0 +1,53 @@
+# Minimal architecture for Phase 6 smoke testing (CPU-runnable).
+# img_size=64, num_frames=8 → N = (8/2)×(64/8)×(64/8) = 4×8×8 = 256 tubelets.
+# tubelets_per_tpos = (64/8)×(64/8) = 64.
+#
+# Causal mask scaled to 8 frames: C=2, G=2, T=4 (2/2/2 temporal positions; 1/1/2 tpos).
+#   → ctx_idx: 64 tubelets [tpos 0], tgt_idx: 128 tubelets [tpos 2,3], gap: 64 [tpos 1]
+#   → total: 64+64+128 = 256 ✓
+
+encoder:
+  _target_: sigreg_video_lejepa.models.encoder.VideoViTEncoder
+  model_name: vit_tiny_patch16_224
+  pretrained: false
+  embed_dim: 192
+  img_size: 64
+  num_frames: 8
+  t_patch: 2
+  h_patch: 8
+  w_patch: 8
+
+masker:
+  _target_: sigreg_video_lejepa.data.causal_masking.CausalTubeMasker
+  context_frames: 2
+  gap_frames: 2
+  target_frames: 4
+  t_patch: 2
+  tubelets_per_tpos: 64   # (64/8) × (64/8)
+
+target_encoder:
+  _target_: sigreg_video_lejepa.models.target_encoder.SharedTargetEncoder
+
+predictor:
+  _target_: sigreg_video_lejepa.models.stochastic_predictor.StochasticVideoJEPAPredictor
+  embed_dim: 192
+  depth: 2
+  num_heads: 2
+
+projector:
+  _target_: sigreg_video_lejepa.models.projector.SIGRegProjector
+  embed_dim: 192
+  hidden_dim: 128
+  proj_dim: 64
+
+sigreg_loss:
+  _target_: sigreg_video_lejepa.training.sigreg_loss.SIGRegLoss
+  num_projections: 256
+  knots: 17
+  t_max: 3.0
+
+vicreg_loss:
+  _target_: sigreg_video_lejepa.training.vicreg_loss.VICRegLoss
+  gamma: 1.0
+  mu_v: 25.0
+  mu_c: 1.0
