@@ -386,3 +386,105 @@ after `sync()` would defer it to the next step's graph and create a one-step lag
 LR scheduler constructed with `last_epoch=start_step-1` on resume. PyTorch ≥2.4 requires
 `initial_lr` in optimizer param groups when `last_epoch ≥ 0`;
 `build_optimizer_and_scheduler` sets this explicitly.
+
+---
+
+## 13. Phase 6 Design: Regularizer Comparison on Causal+Stochastic Video JEPA
+
+### The Narrowed Novelty Claim
+
+Phase 5 identified the temporal-shortcut problem: random tube masking lets the predictor
+copy nearby frames, producing low prediction loss *and* low linear-probe accuracy simultaneously.
+Causal masking with a gap fixes the testbed; stochastic prediction adds richer training signal
+under the harder task. Phase 6's contribution is the **three-way regularizer comparison
+(SIGReg vs EMA vs VICReg-VC) on this fixed testbed**, not the causal masker or stochastic
+predictor individually (both are published in VJ-VCR / Var-JEPA / Variational JEPA).
+
+### Causal Mask: C=6, G=4, T=6
+
+On 16-frame clips with t_patch=2 (8 temporal positions, 256 spatial tubelets each):
+- **Context** tpos [0,1,2] = 3 positions × 256 = 768 tubelets (visible to encoder)
+- **Gap** tpos [3,4] = 2 positions × 256 = 512 tubelets (excluded from both ctx and tgt)
+- **Target** tpos [5,6,7] = 3 positions × 256 = 768 tubelets (predicted)
+
+Why C=6, G=4, T=6: all 16 frames are assigned (no waste), context and target are symmetric
+in length (same number of tokens, equal weighting), and the gap is 25% of the total —
+large enough to block direct temporal copying but not so large that the target is
+uninferable from context. Tubelet count: 2,048 total = 768 ctx + 512 gap + 768 tgt.
+
+The mask is deterministic (no randomness). `CausalTubeMasker` precomputes `ctx_idx` and
+`tgt_idx` as int32 CPU tensors at `__init__` and returns them on the requested device at
+each call. This is safe with `seed_everything` — the indices don't depend on random state.
+
+### Single Gaussian Stochastic Predictor
+
+`StochasticVideoJEPAPredictor` outputs (mu, log_var) per target token via a final linear
+head D → 2D. Sample z = mu + exp(0.5 × log_var) × eps, eps ~ N(0, I). Mixture-of-Gaussians
+is deferred to Phase 7; a single Gaussian tests whether KL pressure alone improves
+representation quality without the complexity of prior mismatch in an MoG.
+
+**Free-bits KL (per-dim clamping, Kingma et al. IAF):**
+```
+kl_per_dim = -0.5 * (1 + log_var - mu² - exp(log_var))  # (B, N_tgt, D)
+kl_per_dim = kl_per_dim.clamp(min=0.5)                   # per-dim floor
+kl_per_token = kl_per_dim.sum(-1)                         # (B, N_tgt)
+kl_loss = kl_per_token.mean()
+```
+Per-dim clamping (not per-token) is critical: per-token clamping blocks the KL gradient
+until aggregate KL crosses 0.5×D=96 nats per token, causing the model to train as
+deterministic for an indeterminate warmup. Per-dim clamping allows individual dimensions
+to rise above the floor independently — the standard free-bits semantics. At init with
+typical weights (mu≈0, log_var≈0 → KL per dim≈0), all dims are clamped to 0.5, so
+kl_loss = 0.5×D=96. With β=1e-3: KL contributes ≈0.096 to the total loss, comparable
+to l_pred ≈ 0.1–1.0.
+
+**Loss formula (Phase 6):**  
+`total = l_pred + β × KL + λ × L_regularizer`  
+where β=1e-3, λ=0.02 (sigreg), λ=0.0 (ema), λ=1.0 (vicreg).
+
+**Loss formula (Phase 5, deterministic, backward compat):**  
+`total = (1 - λ) × l_pred + λ × L_sigreg`  
+Both formulas are preserved in `compute_loss` by branching on `predictor_type`.
+
+### VICReg-VC: VC Only, No Invariance Term
+
+The JEPA prediction loss serves as the invariance term architecturally — the predictor
+is trained to match the target encoder's output, which is the cross-view consistency
+signal. Adding an explicit invariance term to VICReg would double-count this objective.
+VC-only is architecturally correct, not a simplification.
+
+**Variance term:**  
+`V = mean_d(relu(gamma - std(z_flat, dim=0)))` where z_flat = (B×N, D).  
+Pushes each dimension's standard deviation to at least gamma=1.0.
+
+**Covariance term:**  
+`C = sum_of_off_diag(cov_sq) / D`  
+where `cov = (1/(N-1)) × Z_centered.T @ Z_centered` (unbiased). Normalized by D.
+
+**Total VICReg:**  `mu_v × V + mu_c × C` with mu_v=25, mu_c=1 (VICReg paper defaults).
+
+### All-Gather on TPU for VICReg (Same Pattern as SIGReg)
+
+Under SPMD data sharding, each core holds batch_size/8 samples. Variance and covariance
+are full-batch statistics — computing them per-shard produces biased estimates (same
+issue as the Epps-Pulley test). Before calling `VICRegLoss.forward()`, `pretrain_tpu.py`
+re-annotates `proj_fp32` as fully replicated via `_all_gather_proj`, inserting an XLA
+all-gather. The conditional covers both regularizer types:
+
+```python
+if regularizer_type in ("sigreg", "vicreg"):
+    proj_global = _all_gather_proj(proj_fp32, mesh, num_devices)
+    l_reg = module.sigreg_loss(proj_global) if regularizer_type == "sigreg" \
+            else module.vicreg_loss(proj_global)
+```
+
+### Three-Arm Controlled Comparison
+
+All arms share: CausalTubeMasker, StochasticPredictor, ViT-Tiny encoder, projector,
+128×128, 75k steps, warmup 3750, β=1e-3. Only the regularizer differs:
+
+| Arm    | regularizer_type | λ    | target_encoder       |
+|--------|-----------------|------|----------------------|
+| SIGReg | sigreg          | 0.02 | SharedTargetEncoder  |
+| EMA    | ema             | 0.0  | EMATargetEncoder     |
+| VICReg | vicreg          | 1.0  | SharedTargetEncoder  |
