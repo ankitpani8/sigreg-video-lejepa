@@ -34,13 +34,15 @@ split 1 (multi-clip):
 | Mode   | Steps  | Top-1  | Top-5  | Effective rank | Var in top-10 dims |
 |--------|--------|--------|--------|----------------|--------------------|
 | SIGReg | 75,000 | 5.87%  | 17.57% | 42.7 / 192     | 57.3%              |
-| EMA    | 69,750 | 4.04%  | 13.27% | 4.2 / 192      | 92.9%              |
+| EMA    | 75,000 | 3.38%  | 11.42% | 4.2 / 192      | 92.9%              |
 
 The **rank gap** is the headline. SIGReg preserves a high-dimensional embedding
 distribution (43 of 192 dims carry meaningful variance); EMA undergoes near-total
 dimensional collapse despite its mechanism being designed to prevent collapse (4
 effective dims; the predictor adapts to the collapsed target, avoiding training
 failure while losing representational capacity).
+
+Additionally, EMA's top singular value carries 72.7% of total variance, indicating the encoder has collapsed to nearly a single dominant direction. Re-running the linear probe at step 75,000 (vs the earlier 69,750 partial) showed top-1 accuracy decreasing from 4.04% to 3.38% — late-stage EMA training actively degraded downstream quality.
 
 Both methods produce only modestly useful representations in absolute terms.
 The interpretation is that low `l_pred` + high rank + low classification accuracy
@@ -58,7 +60,7 @@ UCF101 linear probe after 25k steps at 64×64, ViT-Tiny + predictor depth=6:
 | Mode   | Top-1  | Top-5  |
 |--------|--------|--------|
 | SIGReg | 3.44%  | 14.03% |
-| EMA    | 4.23%  | 15.25% |
+| EMA    | 3.38%  | 11.42% |
 
 Established pipeline correctness but did not produce a meaningful comparison —
 both modes near random-features baseline due to undertraining. Retained as
