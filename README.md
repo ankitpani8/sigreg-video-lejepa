@@ -33,7 +33,7 @@ split 1 (multi-clip):
 | SIGReg | 75,000 | 5.87%  | 17.57% | 42.7 / 192     | 57.3%              |
 | EMA    | 75,000 | 3.38%  | 11.42% | 4.2 / 192      | 92.9%              |
 
-The **rank gap** is the headline. SIGReg preserves a high-dimensional embedding
+The **rank gap** is evident. SIGReg preserves a high-dimensional embedding
 distribution (43 of 192 dims carry meaningful variance); EMA undergoes near-total
 dimensional collapse despite its mechanism being designed to prevent collapse (4
 effective dims; the predictor adapts to the collapsed target, avoiding training
