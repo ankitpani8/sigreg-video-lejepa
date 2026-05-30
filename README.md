@@ -4,7 +4,7 @@ Applying LeJEPA's SIGReg training recipe to a V-JEPA-style video architecture, e
 
 ## Status
 
-**Phase 5 complete (key result locked).** SIGReg vs EMA controlled comparison at
+**Phase 5 complete** SIGReg vs EMA controlled comparison at
 128×128 / 75k steps on UCF101 produced the project's central finding: SIGReg
 maintains ~10× higher effective embedding rank than EMA (42.7 vs 4.2 out of 192),
 demonstrating SIGReg's collapse-prevention claim extends from images to video at
@@ -16,9 +16,6 @@ runs on Kaggle TPU v5e-8 (`scripts/pretrain_tpu.py`), since Lightning's `XLAStra
 is incompatible with Kaggle's single-process TPU topology. Numerical equivalence
 verified: SIGReg on a fixed batch matches CPU reference within 0.3%. The project now
 has a working dual-accelerator pipeline (Lightning for GPU, SPMD for TPU).
-
-**Pending**: `phase5_ema_seed0` needs its final 5,250 steps on GPU (currently at
-69,750/75,000 due to a quota interruption); a quick resume run completes it.
 
 **Phase 6 in progress (design locked).** Three-way regularizer comparison (SIGReg vs EMA
 vs VICReg-VC) on a fixed causal+stochastic-prediction testbed. CausalTubeMasker,
