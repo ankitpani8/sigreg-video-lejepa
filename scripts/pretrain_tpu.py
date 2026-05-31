@@ -131,7 +131,7 @@ def main(cfg: DictConfig) -> None:
     )
     wandb_token: str | None = cfg.get("wandb_token", None) or os.environ.get("WANDB_API_KEY")
     wandb_project: str = cfg.get("wandb_project", "sigreg-video-lejepa")
-    wandb_entity: str = cfg.get("wandb_entity", os.environ.get("WANDB_ENTITY", "ankitpani"))
+    wandb_entity: str = cfg.get("wandb_entity", os.environ.get("WANDB_ENTITY", "ankitpani-esade"))
 
     # ── Build model components ─────────────────────────────────────────────────
     encoder = instantiate(cfg.model.encoder)
