@@ -83,9 +83,10 @@ This project bridges the two: **can SIGReg training extend cleanly from images t
   - [x] ucf101_medium configs (128×128, 2,048 tubelets, predictor depth=12)
   - [x] 4 experiment configs: phase5_{sigreg,ema}_seed{0,1}
   - [x] phase5_sigreg_seed0 to 75k → linear probe + rank diagnostic complete
-  - [x] phase5_ema_seed0 to 69,750 → linear probe + rank diagnostic complete
-  - [ ] phase5_ema_seed0 final 5,250 steps (next GPU session)
-  - [ ] phase5_{sigreg,ema}_seed1 (variance estimate, time permitting)
+  - [x] phase5_ema_seed0 to 75k → linear probe + rank diagnostic complete
+    - [x] (Sub-run) phase5_ema_seed0 (25k steps): decay tuned to 0.999 > results in, decay tuning improved EMA's effective rank from 4.2 to 19.6
+    - [ ] (Sub-run) phase5_ema_seed0: decay tuned to 0.9999
+  - [ ] phase5_{sigreg,ema}_seed1 (variance estimate)
 - [x] **Phase 5b** — TPU v5e-8 support via Lightning XLAStrategy ❌ DEPRECATED
   - Multi-process `xmp.spawn` incompatible with Kaggle TPU single-process topology
   - Configs and tests retained as historical record; do not use
@@ -104,7 +105,9 @@ This project bridges the two: **can SIGReg training extend cleanly from images t
   - [x] pretrain_tpu.py: stochastic branch + VICReg all-gather (same pattern as SIGReg)
   - [x] 14 experiment configs (GPU + TPU × 3 regularizers × 2 seeds + 2 smoke)
   - [x] 16 new tests; all Phase 4/5 paths verified unchanged
-  - [ ] phase6_{sigreg,ema,vicreg}_seed{0,1} training runs on Kaggle GPU (next sessions)
+  - [ ] phase6_{sigreg,ema,vicreg}_seed{0,1} training runs on Kaggle TPU (running)
+    - [x] Phase 6 SIGReg seed0: top-1 8.75%, rank 110.4 (causal masking broke temporal shortcut)
+    - [ ] Phase 6 EMA seed0, VICReg seed0 (clean three-way comparison)
   - [ ] Linear probe + effective-rank diagnostic on Phase 6 representations
 - [ ] **v2.0** — Phase 6 results (regularizer paper, workshop / arXiv preprint target)
 - [ ] **Phase 7+** — SSv2 scaling (deferred until UCF101 results conclusive)
