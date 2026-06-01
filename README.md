@@ -21,7 +21,7 @@ has a working dual-accelerator pipeline (Lightning for GPU, SPMD for TPU).
 vs VICReg-VC) on a fixed causal+stochastic-prediction testbed. CausalTubeMasker,
 StochasticVideoJEPAPredictor, and VICRegLoss implemented; all tests pass (16 new Phase 6
 tests + all existing Phase 4/5 tests); smoke configs verified on CPU. Training infrastructure
-ready for Kaggle GPU/TPU sessions.
+ready for Kaggle TPU sessions.
 
 ### Phase 5 Results
 
@@ -86,7 +86,7 @@ This project bridges the two: **can SIGReg training extend cleanly from images t
   - [x] phase5_ema_seed0 to 75k → linear probe + rank diagnostic complete
     - [x] (Sub-run) phase5_ema_seed0 (25k steps): decay tuned to 0.999 > results in, decay tuning improved EMA's effective rank from 4.2 to 19.6
     - [ ] (Sub-run) phase5_ema_seed0: decay tuned to 0.9999
-  - [ ] phase5_{sigreg,ema}_seed1 (variance estimate)
+  - [ ] phase5_{sigreg,ema}_seed1 (variance estimate, running)
 - [x] **Phase 5b** — TPU v5e-8 support via Lightning XLAStrategy ❌ DEPRECATED
   - Multi-process `xmp.spawn` incompatible with Kaggle TPU single-process topology
   - Configs and tests retained as historical record; do not use
@@ -109,7 +109,7 @@ This project bridges the two: **can SIGReg training extend cleanly from images t
     - [x] Phase 6 SIGReg seed0: top-1 8.75%, rank 110.4 (causal masking broke temporal shortcut)
     - [ ] Phase 6 EMA seed0, VICReg seed0 (clean three-way comparison)
   - [ ] Linear probe + effective-rank diagnostic on Phase 6 representations
-- [ ] **v2.0** — Phase 6 results (regularizer paper, workshop / arXiv preprint target)
+- [ ] **v2.0** — Phase 6 results
 - [ ] **Phase 7+** — SSv2 scaling (deferred until UCF101 results conclusive)
 - [ ] **v3.0** — SSv2 results
 
