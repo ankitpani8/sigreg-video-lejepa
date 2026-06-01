@@ -24,6 +24,18 @@ from sigreg_video_lejepa.evaluation.feature_extractor import FeatureExtractor
 logger = logging.getLogger(__name__)
 
 
+def _select_device() -> torch.device:
+    """Return the best available device: CUDA > XLA > CPU."""
+    if torch.cuda.is_available():
+        return torch.device("cuda")
+    try:
+        import torch_xla.core.xla_model as xm  # noqa: PLC0415
+
+        return xm.xla_device()
+    except ImportError:
+        return torch.device("cpu")
+
+
 @hydra.main(config_path="../configs", config_name="linprobe_config", version_base="1.3")
 def main(cfg: DictConfig) -> None:
     features_path = Path(cfg.evaluation.features_dir)
@@ -45,7 +57,8 @@ def main(cfg: DictConfig) -> None:
     else:
         logger.info("Using randomly-initialized encoder (no checkpoint_path set).")
 
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    device = _select_device()
+    logger.info("Using device: %s", device)
     extractor = FeatureExtractor(encoder, device)
 
     # train split: single-clip, center-crop (no augmentation).
