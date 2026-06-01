@@ -4,6 +4,11 @@ import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
 
+try:
+    import torch_xla as _torch_xla
+except ImportError:
+    _torch_xla = None
+
 
 class FeatureExtractor:
     """Extract encoder features from a DataLoader, with no-grad and eval mode.
@@ -18,6 +23,7 @@ class FeatureExtractor:
     def __init__(self, encoder: nn.Module, device: torch.device) -> None:
         self.encoder = encoder.to(device).eval()
         self.device = device
+        self._is_xla = _torch_xla is not None and device.type == "xla"
 
     @torch.no_grad()
     def extract(self, loader: DataLoader) -> tuple[torch.Tensor, torch.Tensor]:
@@ -44,6 +50,11 @@ class FeatureExtractor:
             else:  # (B, C, T, H, W) — single-clip
                 tokens = self.encoder(clips)   # (B, N, D)
                 features = tokens.mean(dim=1)  # (B, D)
+
+            # Flush the lazy XLA graph once per batch before pulling to CPU.
+            # Prevents unbounded graph accumulation across batches on TPU.
+            if self._is_xla:
+                _torch_xla.sync()
 
             all_features.append(features.cpu())
             all_labels.append(labels.cpu())
