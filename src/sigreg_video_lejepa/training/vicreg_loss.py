@@ -53,11 +53,14 @@ class VICRegLoss(nn.Module):
         z_flat = z.reshape(B * N, D)  # (S, D)
 
         # Variance term: push per-dimension std toward gamma
-        std = z_flat.std(dim=0)                                      # (D,)
-        variance_loss = F.relu(self.gamma - std).mean()              # mean over D
+        # Manual std (XLA-safe: aten::std backward is unregistered on XLA and can give
+        # silently wrong gradients). var = mean((x - mean)^2), std = sqrt(var + eps).
+        z_centered = z_flat - z_flat.mean(dim=0, keepdim=True)
+        var = z_centered.pow(2).mean(dim=0)        # (D,) — biased var, fine for this penalty
+        std = torch.sqrt(var + 1e-4)               # eps inside sqrt for numerical stability + grad safety
+        variance_loss = torch.mean(F.relu(self.gamma - std))
 
         # Covariance term: penalize off-diagonal elements of the normalized cov matrix
-        z_centered = z_flat - z_flat.mean(dim=0)                     # (S, D)
         cov = (z_centered.T @ z_centered) / (z_flat.size(0) - 1)    # (D, D) unbiased
         # Off-diagonal squared sum, normalized by D (VICReg paper §3.2)
         # Avoids in-place fill_ on a grad tensor by subtracting the diagonal directly.
