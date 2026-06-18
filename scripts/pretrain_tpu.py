@@ -256,13 +256,20 @@ def main(cfg: DictConfig) -> None:
             # produces biased estimates that diverge from the GPU baseline.
             regularizer_type = module.hparams.regularizer_type
             lam = module.hparams.lam
-            if regularizer_type in ("sigreg", "vicreg"):
+            if regularizer_type == "sigreg":
+                # SIGReg needs the replicated global batch (Epps-Pulley test is not
+                # sum-decomposable). All-gather via replicated annotation. Validated:
+                # TPU matches CPU within 0.24%.
                 proj_fp32 = proj.to(torch.float32)
                 proj_global = _all_gather_proj(proj_fp32, mesh, num_devices)
-                if regularizer_type == "sigreg":
-                    l_reg = module.sigreg_loss(proj_global)
-                else:
-                    l_reg = module.vicreg_loss(proj_global)
+                l_reg = module.sigreg_loss(proj_global)
+            elif regularizer_type == "vicreg":
+                # VICReg V and C are sum-decomposable batch statistics. Keep proj
+                # DATA-SHARDED and let the contraction over the sharded batch axis
+                # trigger the collective on the small (D,) and (D,D) outputs. Avoids
+                # the 14GB replicated-batch-contraction intermediate (60000x smaller).
+                proj_fp32 = proj.to(torch.float32)
+                l_reg = module.vicreg_loss(proj_fp32)   # NO all-gather — pass sharded
             else:  # "ema"
                 l_reg = torch.zeros((), device=device)
 

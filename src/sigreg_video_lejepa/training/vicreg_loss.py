@@ -44,26 +44,36 @@ class VICRegLoss(nn.Module):
     def forward(self, z: torch.Tensor) -> torch.Tensor:
         """
         Args:
-            z: (B, N, D) — projector output for all context tokens.
-               Must be all-gathered before this call under SPMD data parallelism.
+            z: (B, N, D) projector output, OR (S, D) pre-flattened.
+               Under SPMD: z must be DATA-SHARDED (not all-gathered). Statistics are
+               computed via reductions over the sharded batch axis, which makes XLA
+               place the collective on the small (D,) and (D,D) outputs rather than
+               gathering the full batch. This avoids the replicated-batch contraction
+               that otherwise produces ~14GB intermediates and stalls the SPMD partitioner.
         Returns:
             scalar loss: mu_v * V + mu_c * C
         """
-        B, N, D = z.shape
-        z_flat = z.reshape(B * N, D)  # (S, D)
+        if z.dim() == 3:
+            B, N, D = z.shape
+            z_flat = z.reshape(B * N, D)
+        else:
+            z_flat = z
+            D = z_flat.shape[1]
 
-        # Variance term: push per-dimension std toward gamma
-        # Manual std (XLA-safe: aten::std backward is unregistered on XLA and can give
-        # silently wrong gradients). var = mean((x - mean)^2), std = sqrt(var + eps).
-        z_centered = z_flat - z_flat.mean(dim=0, keepdim=True)
-        var = z_centered.pow(2).mean(dim=0)        # (D,) — biased var, fine for this penalty
-        std = torch.sqrt(var + 1e-4)               # eps inside sqrt for numerical stability + grad safety
+        N_samples = z_flat.shape[0]  # logical global count; XLA reduces across shards
+
+        # Global mean via sum over the (sharded) batch axis.
+        mean = z_flat.sum(dim=0) / N_samples              # (D,) — cross-shard reduce on output
+        z_centered = z_flat - mean                        # stays sharded
+
+        # Variance term: per-dim std toward gamma. Manual var (XLA-safe, no aten::std).
+        var = z_centered.pow(2).sum(dim=0) / N_samples    # (D,) — cross-shard reduce
+        std = torch.sqrt(var + 1e-4)
         variance_loss = torch.mean(F.relu(self.gamma - std))
 
-        # Covariance term: penalize off-diagonal elements of the normalized cov matrix
-        cov = (z_centered.T @ z_centered) / (z_flat.size(0) - 1)    # (D, D) unbiased
-        # Off-diagonal squared sum, normalized by D (VICReg paper §3.2)
-        # Avoids in-place fill_ on a grad tensor by subtracting the diagonal directly.
+        # Covariance: contraction over the sharded batch axis puts the collective on
+        # the small (D, D) output, not the large (S, D) input.
+        cov = (z_centered.T @ z_centered) / (N_samples - 1)   # (D, D)
         cov_sq = cov.pow(2)
         covariance_loss = (cov_sq.sum() - cov_sq.diagonal().sum()) / D
 
