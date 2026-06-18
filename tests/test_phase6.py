@@ -145,6 +145,21 @@ def test_vicreg_loss_high_on_collapsed() -> None:
     assert loss.item() > 20.0, f"VICReg on collapsed embeddings should be large, got {loss.item()}"
 
 
+def test_vicreg_loss_shape_invariance() -> None:
+    """(B, N, D) and pre-flattened (S, D) inputs produce identical loss values."""
+    from sigreg_video_lejepa.training.vicreg_loss import VICRegLoss
+
+    torch.manual_seed(42)
+    loss_fn = VICRegLoss(gamma=1.0, mu_v=25.0, mu_c=1.0)
+    z_3d = torch.randn(8, 4, 32)   # (B=8, N=4, D=32)
+    z_2d = z_3d.reshape(32, 32)    # (S=32, D=32)
+    loss_3d = loss_fn(z_3d)
+    loss_2d = loss_fn(z_2d)
+    assert loss_3d.item() == pytest.approx(loss_2d.item(), rel=1e-5), (
+        f"(B,N,D) and (S,D) must give identical loss: {loss_3d.item()} vs {loss_2d.item()}"
+    )
+
+
 def test_vicreg_loss_gradients() -> None:
     """Variance term gradient flows when std < gamma (active relu region).
 

@@ -463,20 +463,60 @@ where `cov = (1/(N-1)) × Z_centered.T @ Z_centered` (unbiased). Normalized by D
 
 **Total VICReg:**  `mu_v × V + mu_c × C` with mu_v=25, mu_c=1 (VICReg paper defaults).
 
-### All-Gather on TPU for VICReg (Same Pattern as SIGReg)
+### VICReg on TPU SPMD: Sharded-Reduction (NOT All-Gather)
 
-Under SPMD data sharding, each core holds batch_size/8 samples. Variance and covariance
-are full-batch statistics — computing them per-shard produces biased estimates (same
-issue as the Epps-Pulley test). Before calling `VICRegLoss.forward()`, `pretrain_tpu.py`
-re-annotates `proj_fp32` as fully replicated via `_all_gather_proj`, inserting an XLA
-all-gather. The conditional covers both regularizer types:
+**Problem (old approach, now fixed):** The naive port of VICReg to SPMD mirrors the
+SIGReg pattern — all-gather `proj` to a replicated `(B_global, N, D)` tensor, then
+compute variance/covariance on it. This causes the XLA SPMD partitioner to materialize
+~14GB of backward intermediates: the gradient flows from a replicated `(D, D)` covariance
+matrix back through the replicated `(49152, 192)` tensor into data-sharded encoder weights,
+forcing the partitioner to insert an expensive all-to-all reshard mid-graph. In practice
+this stalls indefinitely on v5e-8.
+
+**Fix: sharded-batch reduction.** VICReg's variance and covariance statistics are
+*sum-decomposable* over the batch axis. Instead of gathering the full batch onto every
+core, we keep `proj` DATA-SHARDED and compute:
+
+```
+mean = z.sum(dim=0) / N          # (D,)  — XLA places the collective on this small output
+var  = z_centered².sum(dim=0) / N  # (D,)  — same
+cov  = z_centered.T @ z_centered / (N-1)  # (D,D) — contraction over sharded axis
+```
+
+XLA sees a contraction `(S_local, D).T @ (S_local, D)` → `(D, D)` and automatically
+inserts an all-reduce on the small `(D, D)` output, not a gather of the large
+`(S_global, D)` input. The statistics are mathematically identical — sums decompose
+across shards. Only the computation order changes.
+
+**Measured impact:** 14.34 GB backward intermediates → 0.00024 GB (60 000× smaller).
+Forward+backward+sync: ~1.1 s. Gradients: finite. Loss value: 0.0286 (matches CPU
+baseline).
+
+**Key principle — SIGReg vs VICReg all-gather policy:**
+
+| Regularizer | All-gather needed? | Reason |
+|-------------|-------------------|--------|
+| SIGReg      | **Yes** | Epps-Pulley CF test is a distributional statistic — not decomposable over a split batch. Each shard would compute an EP test on 1/8 the data, producing a biased and weaker signal. |
+| VICReg      | **No** | Mean, variance, and covariance are sum-decomposable. XLA places the all-reduce on the small (D,) and (D,D) outputs automatically. |
+
+The pretrain_tpu.py regularizer branch reflects this split:
 
 ```python
-if regularizer_type in ("sigreg", "vicreg"):
-    proj_global = _all_gather_proj(proj_fp32, mesh, num_devices)
-    l_reg = module.sigreg_loss(proj_global) if regularizer_type == "sigreg" \
-            else module.vicreg_loss(proj_global)
+if regularizer_type == "sigreg":
+    proj_fp32 = proj.to(torch.float32)
+    proj_global = _all_gather_proj(proj_fp32, mesh, num_devices)  # replicate for EP test
+    l_reg = module.sigreg_loss(proj_global)
+elif regularizer_type == "vicreg":
+    proj_fp32 = proj.to(torch.float32)
+    l_reg = module.vicreg_loss(proj_fp32)   # NO all-gather — pass sharded, reduce on output
+else:  # "ema"
+    l_reg = torch.zeros((), device=device)
 ```
+
+This pattern generalises: any future batch-statistic regularizer whose statistics are
+sum-decomposable (spectral norm, batch-norm statistics, etc.) should use the sharded-input
+path. Regularizers that require the full empirical distribution (KDE, MMD, EP test) must
+all-gather first.
 
 ### Three-Arm Controlled Comparison
 
