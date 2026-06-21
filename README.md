@@ -9,7 +9,7 @@ Applying LeJEPA's SIGReg training recipe to a V-JEPA-style video architecture, e
 maintains ~10× higher effective embedding rank than EMA (42.7 vs 4.2 out of 192),
 demonstrating SIGReg's collapse-prevention claim extends from images to video at
 matched compute. Both methods achieve modest absolute linear-probe accuracy (~4-6%),
-attributed to temporal shortcut learning under random tube masking.
+attributed   to temporal shortcut learning under random tube masking.
 
 **Phase 5c complete (TPU SPMD path validated).** A standalone SPMD training harness
 runs on Kaggle TPU v5e-8 (`scripts/pretrain_tpu.py`), since Lightning's `XLAStrategy`
@@ -22,6 +22,20 @@ vs VICReg-VC) on a fixed causal+stochastic-prediction testbed. CausalTubeMasker,
 StochasticVideoJEPAPredictor, and VICRegLoss implemented; all tests pass (16 new Phase 6
 tests + all existing Phase 4/5 tests); smoke configs verified on CPU. Training infrastructure
 ready for Kaggle TPU sessions.
+### Phase 6 Results (causal masking + stochastic predictor, UCF101)
+
+| Arm    | Top-1   | Top-5   | Effective rank |
+|--------|---------|---------|----------------|
+| EMA    | 20.75%  | 44.62%  | 115.2          |
+| SIGReg | 8.75%   | 24.47%  | 110.4          |
+| VICReg | 7.61%   | 21.97%  | 71.5           |
+
+**Key finding**: On this causal-stochastic video testbed, EMA's co-evolving target
+substantially outperforms both distributional regularizers (2.4–2.7× higher top-1),
+despite EMA and SIGReg having near-identical effective rank (115 vs 110). Effective rank
+fails to predict representation quality — same rank, 2.4× accuracy difference. This
+inverts the original SIGReg-replaces-EMA hypothesis and cautions against rank as a
+video-SSL quality proxy. (Single seed; seed-1 replication pending.)
 
 ### Phase 5 Results
 
