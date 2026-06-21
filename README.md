@@ -85,6 +85,16 @@ historical baseline. Full analysis: [`docs/phase4_results.md`](docs/phase4_resul
 
 This project bridges the two: **can SIGReg training extend cleanly from images to video?**
 
+This project bridges the two: **can SIGReg training extend cleanly from images to video?**
+
+**Short answer (Phase 6): not at this scale.** On a controlled UCF101 testbed (ViT-Tiny,
+causal masking, stochastic predictor), EMA's co-evolving target substantially outperforms
+both SIGReg and VICReg on the downstream action-classification probe (20.8% vs 8.8% vs
+7.6% top-1), despite all three reaching comparable effective rank. Effective rank does not
+predict representation quality here — EMA and SIGReg have near-identical rank (~110-115)
+yet a 2.4× accuracy gap. See [`docs/phase6_results.md`](docs/phase6_results.md). Single
+seed; replication in progress.
+
 ## Roadmap
 
 - [x] **Phase 0** — End-to-end pipeline on synthetic data ✅
