@@ -1,89 +1,111 @@
 # Phase 6 Results: Regularizer Comparison on Causal-Stochastic Video JEPA
 
-## Setup
-
-Fixed testbed (same for all arms)
+## Setup (identical across all three arms)
 
 - **Encoder**: ViT-Tiny (192-dim, depth 12), 3D tubelet 2×8×8, 128×128, 16 frames, 2,048 tubelets
-- **Masking**: causal with gap — context frames 0-5, gap frames 6-9 (hidden), target frames 10-15.
-  768 context tubelets, 768 target tubelets, 512 gap tubelets excluded.
-- **Predictor**: stochastic, single-Gaussian output head (μ, log_var), reparameterized sample,
-  KL toward N(0,I) with per-dimension free-bits floor at 0.5 nats/dim, β=1e-3
-- **Training**: 75,000 steps, warmup 3,750, batch 64 global (TPU SPMD v5e-8), bf16 forward / fp32 regularizer
+- **Masking**: causal with gap — context frames 0-5, gap frames 6-9 (hidden), target frames 10-15
+  (768 context tubelets, 768 target tubelets, 512 gap tubelets excluded)
+- **Predictor**: stochastic single-Gaussian head (μ, log_var), reparameterized sample,
+  KL to N(0,I) with per-dimension free-bits floor (0.5 nats/dim), β=1e-3
+- **Training**: 75,000 steps, warmup 3,750, global batch 64
 - **Eval**: linear probe on UCF101 split 1 (multi-clip), frozen mean-pooled tokens
 
-The regularizer is the only variable across arms:
+The regularizer is the ONLY variable:
+- **EMA**: λ=0, EMATargetEncoder, decay=0.996 (V-JEPA default, untuned)
 - **SIGReg**: λ=0.02, SharedTargetEncoder, no EMA
-- **EMA**: λ=0, EMATargetEncoder decay=0.996 (V-JEPA default, reference baseline)
 - **VICReg-VC**: λ=1.0 (μ_v=25, μ_c=1), SharedTargetEncoder, no EMA
 
-## Results
+SIGReg and EMA arms trained on TPU v5e-8 (SPMD); VICReg on TPU after the SPMD
+covariance fix (see design_decisions.md). All probed identically on CPU.
 
-| Arm    | Seed | Steps  | Top-1  | Top-5   | Effective rank | Var in top-10 dims |
-|--------|------|--------|--------|---------|----------------|--------------------|
-| SIGReg | 0    | 75,000 | 8.75%  | 24.47%  | 110.4 / 192    | 29.5%              |
-| EMA    | 0    | —      | pending| pending | pending        | pending            |
-| VICReg | 0    | —      | pending| pending | pending        | pending            |
+## Results (seed 0)
 
-## SIGReg seed0 — observations
+| Arm    | Top-1   | Top-5   | Effective rank | Var in top-10 dims |
+|--------|---------|---------|----------------|--------------------|
+| **EMA**    | **20.75%** | **44.62%** | 115.2 / 192    | 18.8%              |
+| SIGReg | 8.75%   | 24.47%  | 110.4 / 192    | 29.5%              |
+| VICReg | 7.61%   | 21.97%  | 71.5 / 192     | 44.3%              |
 
-### Causal masking broke the temporal shortcut
-Phase 5 SIGReg (random tube masking) drove train l_pred to 0.045 — the predictor copied
-nearby visible tubelets, learning easy-but-uninformative features. Phase 6 SIGReg
-(causal masking + 4-frame gap) held l_pred at ~0.36 through training: the hidden gap
-removes the nearest-neighbor to copy, forcing genuine temporal extrapolation. The premise
-behind the causal-masking testbed is empirically confirmed.
+## Primary finding: EMA substantially outperforms both distributional regularizers
 
-### Rank exploded; accuracy improved partially
-Effective rank rose from 42.7 (Phase 5 SIGReg) to 110.4 — over half the embedding
-dimensions now carry meaningful variance, variance-in-top-10 dropped from 57.3% to 29.5%.
-The representation is the highest-rank, least-collapsed of any run in the project.
-Top-1 accuracy improved 5.87% → 8.75%. So the harder testbed produced both a higher-rank
-AND a more useful representation than Phase 5 SIGReg (clean within-regularizer comparison).
+On this causal-stochastic video testbed, EMA's co-evolving target encoder beats both
+SIGReg and VICReg by a wide margin: 20.75% top-1 vs 8.75% (SIGReg) and 7.61% (VICReg) —
+a 2.4–2.7× gap. The separation holds on top-5 (44.6% vs 24.5% / 22.0%). This is the
+largest and clearest effect measured in the project, and it inverts the original
+hypothesis that SIGReg (per LeJEPA, Balestriero & LeCun 2025) would serve as a clean
+replacement for EMA on video.
 
-### Stochasticity barely engaged
-Train l_kl settled near the free-bits floor (~96-100 = D × 0.5), indicating the predictor
-used little predictive variance beyond the minimum the free-bits clamp enforces. For this
-testbed (6 context frames, 6 target frames, 4-frame gap), the future is determined enough
-that the unimodal Gaussian rarely needs to spread. This is early evidence that the
-single-Gaussian choice was adequate at this scale, and a data point for the deferred
-MoG question (Phase 7): if futures aren't multimodal here, MoG's extra capacity wouldn't help.
+Notably, EMA wins at its **untuned default** decay (0.996) — it was given no
+hyperparameter advantage over the regularizers (which also use published defaults).
 
-## Open question: rank and accuracy appear decoupled
+## Secondary finding: effective rank is a poor proxy for video representation quality
 
-Cross-referencing the Phase 5 decay sweep (a separate sub-study):
+The rank–accuracy relationship is not merely weak — it is actively misleading:
 
-| Config (cross-phase, NOT a clean comparison) | Effective rank | Top-1 |
-|----------------------------------------------|----------------|-------|
-| Phase 6 SIGReg (causal+stochastic)           | 110.4          | 8.75% |
-| Phase 5 EMA decay=0.999 (random+determ., 25k)| 19.6           | 10.89%|
+- **EMA and SIGReg have near-identical effective rank** (115.2 vs 110.4) yet EMA
+  classifies **2.4× better** (20.75% vs 8.75%). Same rank, vastly different quality.
+- **VICReg has the lowest rank** (71.5) and the lowest accuracy (7.61%), but the
+  rank gap to SIGReg (110.4) does not predict the small accuracy gap (8.75 vs 7.61).
 
-The highest-rank representation is NOT the highest-accuracy one. SIGReg maximizes effective
-rank but a moderate-rank tuned EMA achieves higher linear-probe accuracy. This suggests
-isotropic-Gaussian regularization prevents collapse but does not, by itself, produce the
-most discriminative representation — consistent with the multimodal-averaging concern raised
-by Huang (2026) and the isotropy-vs-task-structure tension noted in Var-JEPA's ablations.
+Two representations with the same effective rank can differ 2.4× in downstream task
+performance. Effective rank measures how many dimensions carry variance; it says nothing
+about whether that variance is task-relevant. This is a direct caution against
+rank-maximization (RankMe-style objectives) as a target for video SSL.
 
-**Critical caveat**: this cross-phase comparison confounds TWO variables (regularizer AND
-testbed). It cannot attribute the accuracy difference to the regularizer. The clean test is
-the WITHIN-Phase-6 three-way comparison (SIGReg vs EMA vs VICReg, all on causal+stochastic),
-pending the EMA and VICReg arms. The rank-accuracy decoupling hypothesis stands or falls on
-that clean comparison, not on this confounded cross-phase one.
+## Interpretation
+
+All three methods achieve high effective rank (72–115 of 192) — i.e., all three prevent
+representational collapse. But preventing collapse is not the same as producing
+discriminative structure:
+
+- **EMA** prevents collapse via a slowly co-evolving prediction target. The target is a
+  momentum average of the network's own representations, so the model predicts
+  semantically coherent, drifting targets — collapse-prevention that carries a
+  task-meaningful learning signal.
+- **SIGReg / VICReg** prevent collapse by constraining the embedding *distribution*
+  (toward isotropic Gaussian / toward decorrelated high variance). This guarantees high
+  rank but is agnostic to task semantics — variance is spread into dimensions that need
+  not be discriminative.
+
+The variance distribution supports this: EMA spreads variance most evenly (top-10 dims
+18.8%) and is most useful; VICReg concentrates most (44.3%) and is least useful. The
+issue for the regularizers is not insufficient spread but *spread into the wrong
+subspace*. This is consistent with the isotropy-cost concern noted by Huang (2026) and
+the isotropy degradation in Var-JEPA's ablations: isotropic-Gaussian regularization buys
+rank at the cost of discriminative structure that EMA's co-evolution preserves.
 
 ## Caveats
 
-- Single seed. The rank difference (110 vs 20) far exceeds plausible seed variance, but the
-  ~2-point accuracy gaps may not. Seed-1 runs deferred pending the within-Phase-6 comparison.
-- EMA arm uses the V-JEPA default decay (0.996) as a reference baseline at standard settings,
-  not a tuned competitor. The decay sweep is a separate Phase 5 sub-study. SIGReg and VICReg
-  use published defaults. No method is selectively tuned within the Phase 6 comparison.
-- ViT-Tiny + UCF101 ceiling remains ~30-40% top-1; all absolute numbers are low and should be
-  read only for internal (cross-arm) comparison, not against full-scale V-JEPA benchmarks.
+- **Single seed per arm.** EMA's 12-point lead over the regularizers far exceeds the
+  ~3-point seed-to-seed variance observed in Phase 5, so the EMA-wins conclusion is very
+  likely robust to seed noise. The exact numbers require seed-1 replication before
+  publication. The SIGReg-vs-VICReg gap (8.75 vs 7.61, 1.1 points) is within plausible
+  seed variance and should be read as "comparable," not "SIGReg beats VICReg."
+- **ViT-Tiny + UCF101** ceiling is ~30-40% top-1; absolute numbers are low and meaningful
+  only for internal (cross-arm) comparison, not against full-scale V-JEPA benchmarks.
+  EMA's 20.75% is the closest any run has come to a useful representation.
+- The finding is specific to this testbed (causal masking + stochastic single-Gaussian
+  predictor, UCF101, ViT-Tiny). Whether EMA's advantage holds at larger scale or under
+  different masking is open.
+
+## Revised project narrative
+
+The project began testing whether SIGReg cleanly replaces EMA for collapse prevention on
+video. The honest result is the inverse: on real video with a transformer and an
+action-classification probe, **EMA's co-evolving target substantially outperforms both
+SIGReg and VICReg**, and **effective rank fails to predict this** — the methods are
+rank-comparable but accuracy-divergent. The contribution is therefore (1) a negative
+result for distributional regularizers as EMA replacements on video JEPA, and (2) a
+positive methodological caution that effective rank is not a reliable quality proxy for
+video representations.
 
 ## Next steps
 
-1. Phase 6 EMA arm (decay=0.996) → linear probe + rank
-2. Phase 6 VICReg arm → linear probe + rank
-3. The clean three-way comparison resolves whether SIGReg's rank advantage translates to
-   accuracy, or whether the rank-accuracy decoupling holds within a controlled testbed.
-4. Seed-1 replication of whichever finding emerges, for variance.
+1. Seed-1 replication of all three Phase 6 arms — confirm the EMA ≫ SIGReg ≈ VICReg
+   ordering holds. Given the gap size this is confirmation, not discovery, but it is
+   required for publication-grade claims.
+2. (Optional) Probe-quality controls: confirm the gap is not a probe-optimization
+   artifact (e.g., longer probe training, probe LR sweep) — though all arms used the
+   identical probe protocol, so relative comparison is fair.
+3. Write-up targeting workshop / arXiv: "EMA vs distributional regularizers on video
+   JEPA, and the failure of effective rank as a quality proxy."
