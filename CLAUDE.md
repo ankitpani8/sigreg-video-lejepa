@@ -220,7 +220,7 @@ configs/experiment/ucf101_dryrun.yaml
 - Phase 5: ✅ complete (SIGReg 5.87% / EMA 3.38% top-1; KEY FINDING: effective rank 42.7 vs 4.2 — SIGReg's anti-collapse advantage demonstrated on video; EMA top-1 SV=0.727 indicates near-1D collapse)
 - Phase 5b: DEPRECATED — Lightning XLAStrategy incompatible with Kaggle TPU single-process topology
 - Phase 5c: ✅ complete (SPMD TPU pipeline validated on Kaggle v5e-8, SIGReg numerics match CPU within 0.3%)
-- Phase 6: planning (regularizer comparison on causal/stochastic-prediction testbed: SIGReg vs EMA vs VICReg)
+- Phase 6: ✅ three-way complete (EMA 20.75% >> SIGReg 8.75% ~ VICReg 7.61% top-1; rank-accuracy decoupling: EMA/SIGReg same rank ~110-115, 2.4x accuracy gap; inverts original hypothesis; seed-1 replication pending)
 
 
 ## Open Questions / Active Decisions
