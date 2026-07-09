@@ -1,142 +1,46 @@
 # sigreg-video-lejepa
 
-Applying LeJEPA's SIGReg training recipe to a V-JEPA-style video architecture, evaluated on UCF101 and Something-Something v2.
+A controlled comparison of anti-collapse mechanisms (EMA, SIGReg, VICReg) in video JEPA, on UCF101. This repository accompanies the paper *"EMA, SIGReg, and VICReg on Video JEPA: A Controlled Comparison, and the Limits of Effective Rank as a Quality Signal."*
 
-## Status
+## Summary
 
-**Phase 5 complete** SIGReg vs EMA controlled comparison at
-128×128 / 75k steps on UCF101 produced the project's central finding: SIGReg
-maintains ~10× higher effective embedding rank than EMA (42.7 vs 4.2 out of 192),
-demonstrating SIGReg's collapse-prevention claim extends from images to video at
-matched compute. Both methods achieve modest absolute linear-probe accuracy (~4-6%),
-attributed   to temporal shortcut learning under random tube masking.
+Video JEPAs prevent representational collapse with one of several mechanisms: an EMA target encoder, VICReg's variance–covariance regularization, or SIGReg's distribution-matching toward an isotropic Gaussian ([LeJEPA](https://arxiv.org/abs/2511.08544), Balestriero & LeCun 2025). LeJEPA argues SIGReg can replace the EMA machinery; whether this holds for video representation learning is untested under controlled conditions. We fix a video-JEPA testbed (ViT-Tiny, causal masking with a gap, a stochastic predictor) and vary **only** the anti-collapse regularizer across three arms, with two seeds each, evaluating with a UCF101 action-classification linear probe.
 
-**Phase 5c complete (TPU SPMD path validated).** A standalone SPMD training harness
-runs on Kaggle TPU v5e-8 (`scripts/pretrain_tpu.py`), since Lightning's `XLAStrategy`
-is incompatible with Kaggle's single-process TPU topology. Numerical equivalence
-verified: SIGReg on a fixed batch matches CPU reference within 0.3%. The project now
-has a working dual-accelerator pipeline (Lightning for GPU, SPMD for TPU).
+**Two findings:**
 
-**Phase 6 in progress (design locked).** Three-way regularizer comparison (SIGReg vs EMA
-vs VICReg-VC) on a fixed causal+stochastic-prediction testbed. CausalTubeMasker,
-StochasticVideoJEPAPredictor, and VICRegLoss implemented; all tests pass (16 new Phase 6
-tests + all existing Phase 4/5 tests); smoke configs verified on CPU. Training infrastructure
-ready for Kaggle TPU sessions.
-### Phase 6 Results (causal masking + stochastic predictor, UCF101)
+1. **In our controlled setting, EMA outperforms both distributional regularizers** — 21.2% top-1 vs 10.8% (SIGReg) and 7.8% (VICReg), non-overlapping seed ranges, at EMA's untuned default momentum.
+2. **Effective rank fails to predict quality** — EMA and SIGReg reach nearly identical mean effective rank (104 vs 100 of 192) yet EMA is ~2× more accurate. Rank tracks collapse, not representation quality.
 
-| Arm    | Top-1   | Top-5   | Effective rank |
-|--------|---------|---------|----------------|
-| EMA    | 20.75%  | 44.62%  | 115.2          |
-| SIGReg | 8.75%   | 24.47%  | 110.4          |
-| VICReg | 7.61%   | 21.97%  | 71.5           |
+These add controlled video evidence to an active 2026 debate on whether isotropic distributional regularization suffices, and are consistent with concurrent image-domain findings and theory that isotropy is costly under structured downstream geometry.
 
-**Key finding**: On this causal-stochastic video testbed, EMA's co-evolving target
-substantially outperforms both distributional regularizers (2.4–2.7× higher top-1),
-despite EMA and SIGReg having near-identical effective rank (115 vs 110). Effective rank
-fails to predict representation quality — same rank, 2.4× accuracy difference. This
-inverts the original SIGReg-replaces-EMA hypothesis and cautions against rank as a
-video-SSL quality proxy. (Single seed; seed-1 replication pending.)
+## Phase 6 Results (causal masking + stochastic predictor, UCF101, two seeds)
 
-### Phase 5 Results
+| Arm    | Top-1 (s0 / s1) | Top-1 mean | Top-5 mean | Eff. rank (s0 / s1) | Rank mean |
+|--------|-----------------|------------|------------|---------------------|-----------|
+| **EMA**    | 20.70 / 21.70   | **21.20%** | 44.52%     | 110.1 / 97.1        | **103.6** |
+| SIGReg | 10.15 / 11.39   | **10.77%** | 30.16%     | 98.2 / 100.9        | **99.5**  |
+| VICReg | 7.98 / 7.56     | **7.77%**  | 22.15%     | 64.7 / 64.5         | **64.6**  |
 
-UCF101 linear probe after 75k steps at 128×128, ViT-Tiny + predictor depth=12,
-split 1 (multi-clip):
+EMA outperforms both distributional regularizers (2.0× SIGReg, 2.7× VICReg on mean top-1) with non-overlapping seed ranges. EMA and SIGReg have nearly identical effective rank (~100–104) yet a ~2× accuracy gap — so rank does not separate them, though it correctly flags VICReg's lower-rank, lower-accuracy regime. Full analysis: [`docs/phase6_results.md`](docs/phase6_results.md).
 
-| Mode   | Steps  | Top-1  | Top-5  | Effective rank | Var in top-10 dims |
-|--------|--------|--------|--------|----------------|--------------------|
-| SIGReg | 75,000 | 5.87%  | 17.57% | 42.7 / 192     | 57.3%              |
-| EMA    | 75,000 | 3.38%  | 11.42% | 4.2 / 192      | 92.9%              |
+Effective rank is the Roy–Vetterli measure (exponential of the entropy of the normalized, unsquared singular-value spectrum), computed on the test-set feature matrix. All numbers come from a single consistent re-evaluation pipeline over the six final checkpoints.
 
-The **rank gap** is evident. SIGReg preserves a high-dimensional embedding
-distribution (43 of 192 dims carry meaningful variance); EMA undergoes near-total
-dimensional collapse despite its mechanism being designed to prevent collapse (4
-effective dims; the predictor adapts to the collapsed target, avoiding training
-failure while losing representational capacity).
+## Checkpoints
 
-Additionally, EMA's top singular value carries 72.7% of total variance, indicating the encoder has collapsed to nearly a single dominant direction. Re-running the linear probe at step 75,000 (vs the earlier 69,750 partial) showed top-1 accuracy decreasing from 4.04% to 3.38% — late-stage EMA training actively degraded downstream quality.
+Final (75,000-step) checkpoints for all six runs: [HuggingFace](https://huggingface.co/ankitpani/sigreg-video-lejepa-checkpoints/tree/main/checkpoints/phase6_final).
 
-Both methods produce only modestly useful representations in absolute terms.
-The interpretation is that low `l_pred` + high rank + low classification accuracy
-indicates **temporal shortcut learning**: the model predicts masked tubelets by
-exploiting nearby visible tubelets (adjacent video frames are near-identical) rather
-than learning semantic content. Random tube masking does not enforce semantic
-prediction on video as strongly as it does on images.
+## Testbed
 
-Full analysis: [`docs/phase5_results.md`](docs/phase5_results.md).
+- **Encoder**: ViT-Tiny (192-dim, depth 12), 3D tubelets 2×8×8, 16 frames at 128×128 (2,048 tubelets).
+- **Masking**: deterministic causal mask with a temporal gap — context positions 0–2, hidden gap 3–4, target positions 5–7. Removes the temporal-copy shortcut that random tube masking permits on video.
+- **Predictor**: stochastic single-Gaussian head (μ, log σ²), reparameterized sample, smooth-L1 prediction loss, per-dimension free-bits KL floor (0.5 nats/dim), β=1e-3.
+- **Regularizer (the only variable)**: EMA (momentum 0.996, V-JEPA default) / SIGReg (λ=0.02) / VICReg-VC (μ_v=25, μ_c=1, λ=1.0).
 
-### Phase 4 Results (early baseline, undertrained)
+Testbed components (causal masking, stochastic prediction) are not claimed as contributions; they define a fixed, non-trivial prediction task on which the regularizers compete.
 
-UCF101 linear probe after 25k steps at 64×64, ViT-Tiny + predictor depth=6:
+## Compute
 
-| Mode   | Top-1  | Top-5  |
-|--------|--------|--------|
-| SIGReg | 3.44%  | 14.03% |
-| EMA    | 3.38%  | 11.42% |
-
-Established pipeline correctness but did not produce a meaningful comparison —
-both modes near random-features baseline due to undertraining. Retained as
-historical baseline. Full analysis: [`docs/phase4_results.md`](docs/phase4_results.md).
-
-## Motivation
-
-[LeJEPA](https://arxiv.org/abs/2511.08544) (Balestriero & LeCun, Nov 2025) introduced SIGReg — a clean, principled regularizer that replaces the EMA target encoder used in earlier JEPAs. It was validated on images.
-
-[V-JEPA](https://arxiv.org/abs/2404.08471) and [V-JEPA 2](https://arxiv.org/abs/2506.09985) extended JEPA to video, but still rely on the EMA recipe.
-
-This project bridges the two: **can SIGReg training extend cleanly from images to video?**
-
-This project bridges the two: **can SIGReg training extend cleanly from images to video?**
-
-**Short answer (Phase 6): not at this scale.** On a controlled UCF101 testbed (ViT-Tiny,
-causal masking, stochastic predictor), EMA's co-evolving target substantially outperforms
-both SIGReg and VICReg on the downstream action-classification probe (20.8% vs 8.8% vs
-7.6% top-1), despite all three reaching comparable effective rank. Effective rank does not
-predict representation quality here — EMA and SIGReg have near-identical rank (~110-115)
-yet a 2.4× accuracy gap. See [`docs/phase6_results.md`](docs/phase6_results.md). Single
-seed; replication in progress.
-
-## Roadmap
-
-- [x] **Phase 0** — End-to-end pipeline on synthetic data ✅
-- [x] **Phase 1** — Tubelet embedding + random tube masking ✅
-- [x] **Phase 2** — UCF101 data pipeline (decord, augmentation, splits) ✅
-- [x] **Phase 3** — Linear probe evaluation pipeline (extract → probe, multi-clip) ✅
-- [x] **Phase 4** — UCF101 baseline at 64×64 / 25k ✅ (weak result, pipeline validated)
-- [x] **v1.0** — UCF101 pipeline complete ✅
-- [x] **Phase 5** — SIGReg vs EMA at 128×128 / 75k ✅ (key result: effective rank 42.7 vs 4.2)
-  - [x] ucf101_medium configs (128×128, 2,048 tubelets, predictor depth=12)
-  - [x] 4 experiment configs: phase5_{sigreg,ema}_seed{0,1}
-  - [x] phase5_sigreg_seed0 to 75k → linear probe + rank diagnostic complete
-  - [x] phase5_ema_seed0 to 75k → linear probe + rank diagnostic complete
-    - [x] (Sub-run) phase5_ema_seed0 (25k steps): decay tuned to 0.999 > results in, decay tuning improved EMA's effective rank from 4.2 to 19.6
-    - [ ] (Sub-run) phase5_ema_seed0: decay tuned to 0.9999
-  - [ ] phase5_{sigreg,ema}_seed1 (variance estimate, running)
-- [x] **Phase 5b** — TPU v5e-8 support via Lightning XLAStrategy ❌ DEPRECATED
-  - Multi-process `xmp.spawn` incompatible with Kaggle TPU single-process topology
-  - Configs and tests retained as historical record; do not use
-- [x] **Phase 5c** — TPU SPMD training path ✅ validated end-to-end
-  - [x] scripts/pretrain_tpu.py with single-process SPMD harness
-  - [x] bf16 forward / fp32 SIGReg with explicit all-gather for global-batch EP test
-  - [x] Checkpoint format interoperable with GPU Lightning path
-  - [x] Smoke test passes on Kaggle TPU v5e-8 (50 steps, finite losses, EMA updates)
-  - [x] SIGReg numerical equivalence verified (TPU within 0.3% of CPU reference)
-- [ ] **v1.1** — UCF101 results at meaningful scale (Phase 5 completion + seed1 replication)
-- [ ] **Phase 6** — Regularizer comparison on causal/stochastic-prediction testbed 🚧
-  - [x] CausalTubeMasker: C=6/G=4/T=6 deterministic mask, TPU-safe (int32 precomputed)
-  - [x] StochasticVideoJEPAPredictor: Gaussian (mu, log_var), per-dim free-bits KL
-  - [x] VICRegLoss: variance + covariance (VC-only; JEPA pred loss serves as invariance)
-  - [x] VideoJEPAModule extended: predictor_type / regularizer_type / beta hparams
-  - [x] pretrain_tpu.py: stochastic branch + VICReg all-gather (same pattern as SIGReg)
-  - [x] 14 experiment configs (GPU + TPU × 3 regularizers × 2 seeds + 2 smoke)
-  - [x] 16 new tests; all Phase 4/5 paths verified unchanged
-  - [ ] phase6_{sigreg,ema,vicreg}_seed{0,1} training runs on Kaggle TPU (running)
-    - [x] Phase 6 SIGReg seed0: top-1 8.75%, rank 110.4 (causal masking broke temporal shortcut)
-    - [ ] Phase 6 EMA seed0, VICReg seed0 (clean three-way comparison)
-  - [ ] Linear probe + effective-rank diagnostic on Phase 6 representations
-- [ ] **v2.0** — Phase 6 results
-- [ ] **Phase 7+** — SSv2 scaling (deferred until UCF101 results conclusive)
-- [ ] **v3.0** — SSv2 results
-
+Pretraining runs on Kaggle TPU v5e-8 under a single-process SPMD harness (`scripts/pretrain_tpu.py`), since Lightning's `XLAStrategy` is incompatible with Kaggle's single-process TPU topology. VICReg's covariance computation required an SPMD-specific fix to run within TPU memory. See [`docs/design_decisions.md`](docs/design_decisions.md) for the engineering details. A GPU path (`scripts/pretrain.py`, PyTorch Lightning) is also provided.
 
 ## Setup
 
@@ -150,48 +54,29 @@ uv pip install -e ".[dev]"
 
 ### Dataset
 
-Download UCF101 once from [CRCV](https://www.crcv.ucf.edu/data/UCF101.php) or the HuggingFace mirror (`quchenyuan/UCF101-ZIP`). Extract and place at:
+Download UCF101 from [CRCV](https://www.crcv.ucf.edu/data/UCF101.php) or the HuggingFace mirror (`quchenyuan/UCF101-ZIP`), then place:
 
-- `MyDrive/datasets/ucf101/UCF-101/` — 101 class folders, 13,320 `.avi` files
-- `MyDrive/datasets/ucf101/ucfTrainTestlist/` — split files (`classInd.txt`, `trainlist01.txt`, `testlist01.txt`)
+- `ucf101/UCF-101/` — 101 class folders, 13,320 `.avi` files
+- `ucf101/ucfTrainTestlist/` — split files (`classInd.txt`, `trainlist01.txt`, `testlist01.txt`)
 
-One-time setup. When mounted in Colab at `/content/drive/MyDrive/`, the default configs in `configs/data/ucf101_small.yaml` will find the data automatically. The first training run copies data to `/content/ucf101_local/` (SSD) for fast I/O; subsequent runs reuse the cache. Phase 5 configs (`ucf101_medium`) use `/content/ucf101_local_128` — a distinct path so both caches can coexist.
+The default configs locate the data automatically; the first training run caches it to local SSD for fast I/O.
 
-## Open Research Questions
+## Limitations and scope
 
-Design choices considered for this project. Some are now active in Phase 6
-(see `docs/design_decisions.md` for Phase 6 details when planning completes).
+Small scale (ViT-Tiny, UCF101) relative to production video-JEPA; absolute accuracies are low and meaningful only for internal cross-arm comparison. LeJEPA's scaling claim is not refuted by small-scale evidence — this is a controlled counterexample at the scale tested. Extending to Something-Something-v2 with a larger encoder (encoder capacity and data jointly) is the natural next step and is left as future work.
 
-- **Causal-temporal masking** — used as a Phase 6 testbed component (mask future
-  frames, predict from past) to break temporal shortcut learning. Not claimed as
-  contribution since VJ-VCR (Dec 2024) and others use related variants on
-  smaller-scale or toy datasets.
+## Roadmap
 
-- **Stochastic prediction** — used as a Phase 6 testbed component (Gaussian-output
-  predictor with bounded KL) to provide richer training signal under causal masking.
-  Not claimed as contribution since Variational JEPA (Jan 2026) and Var-JEPA (Mar 2026)
-  already use stochastic JEPA prediction in non-video domains.
+- [x] **Phase 0–3** — Pipeline, tubelet embedding, UCF101 data, linear-probe evaluation
+- [x] **Phase 4** — UCF101 baseline at 64×64 / 25k (pipeline validation)
+- [x] **Phase 5** — SIGReg vs EMA at 128×128 / 75k, including an EMA momentum-sensitivity sub-study (appendix material)
+- [x] **Phase 5c** — TPU SPMD training path validated (numerical equivalence to CPU reference)
+- [x] **Phase 6** — Three-way regularizer comparison (EMA / SIGReg / VICReg), two seeds, causal-stochastic testbed — **complete**
+- [ ] **Future** — SSv2 / larger-encoder scaling; disentangling isotropy-cost vs. gradient-vanishing explanations for SIGReg's underperformance
 
-- **VICReg as third regularizer arm** — Phase 6 variable. Tests the hypothesis that
-  isotropic-Gaussian regularization (SIGReg) may suppress task-relevant cluster
-  structure on video, whereas VICReg's softer variance-covariance constraint may
-  preserve it.
+## Citation
 
-- **Frozen-teacher / SALT-style pretraining** — replace EMA with a pre-trained
-  frozen target encoder (Apple, 2025). Deferred because it requires a separate
-  pixel-reconstruction pretraining stage; out of scope for v2.x.
-
-- **Larger encoder (ViT-Small, ViT-Base)** — theoretical fit improves with more data.
-  Deferred because UCF101's 9,500 videos don't justify it; needs Kinetics-400 or larger
-  pretraining data first.
-
-- **Higher spatial resolution (256×256)** — approaches V-JEPA 2 reference. Deferred
-  due to T4 VRAM constraints; possible on TPU SPMD path now but compute cost is high.
-
-- **Action anticipation / world-model evaluation** — evaluate on benchmarks where
-  multi-future imagination matters. Deferred because UCF101 linear probe doesn't test
-  this; would require different evaluation infrastructure.
-
+If you use this code or the checkpoints, please cite the accompanying paper (preprint link to be added).
 
 ## License
 
