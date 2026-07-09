@@ -24,54 +24,54 @@ fix to its covariance computation (see design_decisions.md §12).
 
 | Arm    | Top-1 s0 | Top-1 s1 | **Top-1 mean** | Top-5 s0 | Top-5 s1 | Top-5 mean |
 |--------|----------|----------|----------------|----------|----------|------------|
-| **EMA**    | 20.75%   | 21.81%   | **21.28%**     | 44.62%   | 45.47%   | 45.05%     |
-| SIGReg | 8.75%    | 12.27%   | **10.51%**     | 24.47%   | 29.29%   | 26.88%     |
-| VICReg | 7.61%    | 8.27%    | **7.94%**      | 21.97%   | 22.39%   | 22.18%     |
+| **EMA**    | 20.70%   | 21.70%   | **21.20%**     | 43.72%   | 45.31%   | 44.52%     |
+| SIGReg | 10.15%   | 11.39%   | **10.77%**     | 29.69%   | 30.64%   | 30.16%     |
+| VICReg | 7.98%    | 7.56%    | **7.77%**      | 21.91%   | 22.39%   | 22.15%     |
 
 **Table 2. Effective rank and variance concentration.**
 
 | Arm    | Rank s0 | Rank s1 | **Rank mean** | Var top-10 s0 | Var top-10 s1 |
 |--------|---------|---------|---------------|---------------|---------------|
-| EMA    | 115.2   | 101.2   | **108.2**     | 18.8%         | 21.7%         |
-| SIGReg | 110.4   | 112.8   | **111.6**     | 29.5%         | 29.3%         |
-| VICReg | 71.5    | 71.2    | **71.4**      | 44.3%         | 43.6%         |
+| EMA    | 110.1   | 97.1    | **103.6**     | 20.7%         | 23.6%         |
+| SIGReg | 98.2    | 100.9   | **99.5**      | 33.8%         | 33.0%         |
+| VICReg | 64.7    | 64.5    | **64.6**      | 47.2%         | 46.5%         |
 
 ## Primary finding: EMA substantially outperforms both distributional regularizers
 
-Across two seeds, EMA reaches 21.28% top-1 (range 20.75–21.81), versus 10.51% for SIGReg
-(range 8.75–12.27) and 7.94% for VICReg (range 7.61–8.27). EMA is 2.0× SIGReg and 2.7×
+Across two seeds, EMA reaches 21.20% top-1 (range 20.70–21.70), versus 10.77% for SIGReg
+(range 10.15–11.39) and 7.77% for VICReg (range 7.56–7.98). EMA is 2.0× SIGReg and 2.7×
 VICReg on mean top-1, with a consistent margin on top-5.
 
-The method ranges do not overlap: EMA's lower seed (20.75%) is far above SIGReg's higher
-seed (12.27%). The ~11-point EMA–SIGReg gap is ~6× SIGReg's own seed-to-seed spread
-(3.5 points) and ~20× EMA's (1.1 points). The ordering EMA ≫ SIGReg > VICReg is
+The method ranges do not overlap: EMA's lower seed (20.70%) is far above SIGReg's higher
+seed (11.39%). The ~10-point EMA–SIGReg gap is several times each method's own
+seed-to-seed spread (~1 point). The ordering EMA ≫ SIGReg > VICReg is
 reproducible, not a seed artifact.
 
 EMA is also the most *stable* method across seeds (range ±0.5 vs SIGReg's ±1.8). It wins
 at its untuned V-JEPA default momentum (0.996), with no hyperparameter advantage over the
 regularizers, which use published defaults.
 
-This inverts the LeJEPA hypothesis that SIGReg-style distributional regularization cleanly
-replaces the EMA target encoder — at least at this scale and on this video testbed.
+This is contrary to the expectation, following LeJEPA, that SIGReg-style distributional
+regularization cleanly replaces the EMA target encoder — at least at this scale and on this
+video testbed. We frame it as controlled evidence for an open question, not a refutation.
 
 ## Secondary finding: effective rank fails to predict representation quality
 
 The rank diagnostics do not track accuracy, and in the most direct comparison they point
-the wrong way:
+The rank diagnostics do not track accuracy:
 
-- **On mean rank, EMA (108.2) is LOWER than SIGReg (111.6)** — yet EMA's mean accuracy is
-  2.0× higher (21.28% vs 10.51%). The higher-rank method is the worse classifier.
-- **In the seed-1 pair specifically**, SIGReg has rank 112.8 vs EMA's 101.2 — SIGReg
-  higher by 11.6 rank — while EMA classifies at 21.81% vs SIGReg's 12.27%, nearly 2×
-  better. Matched seed, higher rank, half the accuracy.
-- EMA and SIGReg occupy the same rank band (101–115 across all four runs) while their
-  accuracy bands are cleanly separated (~21% vs ~10%). Rank does not carry the signal that
+- **EMA and SIGReg have nearly identical mean effective rank** (103.6 vs 99.5, differing by ~4) — yet EMA's mean accuracy is
+  2.0× higher (21.20% vs 10.77%). Essentially equal rank, twice the accuracy.
+- **Per seed, the two methods stay within a few rank points** (EMA 110.1/97.1, SIGReg
+  98.2/100.9 — overlapping ranges) while their accuracy differs ~2× in every pairing.
+- EMA and SIGReg occupy the same rank band (~97–110 across all four runs) while their
+  accuracy bands are cleanly separated (~21% vs ~11%). Rank does not carry the signal that
   distinguishes them.
 
 Note the scope precisely: the decoupling is an EMA-vs-SIGReg phenomenon. VICReg is
-conventional — lower rank (71) *and* lower accuracy (8%) — so for VICReg, rank and accuracy
-agree. The sharp claim is therefore: **effective rank cannot distinguish EMA from SIGReg
-despite a 2× downstream accuracy gap; two methods of equal (or inverted) rank differ
+conventional — lower rank (65) *and* lower accuracy (8%) — so for VICReg, rank and accuracy
+agree. The claim is therefore: **effective rank cannot distinguish EMA from SIGReg
+despite a 2× downstream accuracy gap; two methods of essentially equal rank differ
 2× in quality.** This is a caution against rank as a quality proxy, not a claim that rank
 is meaningless everywhere.
 
@@ -109,18 +109,17 @@ multimodality at this scale; the single-Gaussian predictor is adequate.
   at the scale tested. Absolute accuracies are low and meaningful only for internal
   cross-arm comparison.
 - **Two seeds**: the EMA ≫ SIGReg > VICReg ordering is replicated and its ranges are
-  non-overlapping. The precise SIGReg-vs-VICReg gap (10.51 vs 7.94) is smaller and its
-  ranges nearly touch (SIGReg s0 8.75 vs VICReg s1 8.27) — read as "SIGReg ≳ VICReg,
-  comparable," not a firm ranking.
+  non-overlapping. The SIGReg-vs-VICReg gap (10.77 vs 7.77) is smaller and its
+  ranges do not overlap (SIGReg low seed 10.15 vs VICReg high seed 7.98) — read as SIGReg modestly ahead of VICReg, with EMA well ahead of both.
 - **Testbed-specific**: established for causal masking + stochastic single-Gaussian
   predictor. Other masking/predictor choices may interact differently.
 
 ## Conclusion
 
 On a controlled causal-stochastic video-JEPA testbed, an EMA target encoder substantially
-and reproducibly outperforms both SIGReg and VICReg distributional regularizers (21.3% vs
-10.5% vs 7.9% mean top-1), inverting the SIGReg-replaces-EMA hypothesis at this scale.
-Effective rank fails to predict this: EMA has lower mean rank than SIGReg yet 2× the
+and reproducibly outperforms both SIGReg and VICReg distributional regularizers (21.2% vs
+10.8% vs 7.8% mean top-1), contrary to the SIGReg-replaces-EMA expectation at this scale.
+Effective rank fails to predict this: EMA and SIGReg have nearly identical mean rank yet EMA has 2× the
 accuracy. Preventing collapse (high rank) is necessary but not sufficient for a useful
 video representation, and rank-based diagnostics can be actively misleading. Downstream
 probing remains necessary to evaluate anti-collapse mechanisms.
